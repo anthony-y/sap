@@ -1,12 +1,49 @@
 // The lexer transforms a chunk of bytes (typically a loaded file) into an array of Tokens, ready to be handed off to the parser.
 #include "lexer.h"
-#include "token.h"
 #include "context.h"
+#include "array.h"
 
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+
+bool string_allocator_init(StringAllocator *sa) {
+    StringBuffer *memory = (StringBuffer *)malloc(sizeof(StringBuffer));
+    if (!memory) {
+        return false;
+    }
+    *memory = (StringBuffer){0};
+    sa->first   = memory;
+    sa->current = memory;
+    sa->num_buffers = 1;
+    return true;
+}
+
+u8 *string_allocator(StringAllocator *sa, u32 length) {
+    if ((sa->current->used+length) > STRING_BUFFER_LENGTH) {
+        StringBuffer *next = (StringBuffer *)malloc(sizeof(StringBuffer));
+        if (!next) {
+            printf("bad news, out of memory");
+            return NULL;
+        }
+        sa->current->next = next;
+        sa->current = next;
+        sa->num_buffers++;
+    }
+    u8 *out = sa->current->data+sa->current->used;
+    sa->current->used += length+1;
+    return out;
+}
+
+void string_allocator_free(StringAllocator *sa) {
+    StringBuffer *buffer = sa->first;
+    while (buffer) {
+        StringBuffer *current = buffer;
+        buffer = current->next;
+        free(current);
+    }
+}
 
 /* Initializes a Lexer */
 void lexer_init(Lexer *tz, const char *path, char *data) {
@@ -20,7 +57,7 @@ void lexer_init(Lexer *tz, const char *path, char *data) {
     tz->curr = data;
     tz->start = data;
 
-    arena_init(&tz->string_allocator, 10240, 1, 1);
+    string_allocator_init(&tz->string_allocator);
 }
 
 /*
@@ -70,12 +107,17 @@ Token token_new(Lexer *tz, TokenType type) {
     t.length = (s32)(tz->curr - tz->start);
     t.file = tz->file_name;
 
-    t.text = (char *)arena_alloc(&tz->string_allocator, t.length+1);
+    t.text = (char *)string_allocator(&tz->string_allocator, t.length+1);
 
-    if (type == Token_STRING_LIT) strncpy(t.text, tz->start+1, t.length-2);
-    else                          strncpy(t.text, tz->start, t.length);
+    if (type > Token_SYMBOL_START && type < Token_SYMBOL_END) {
+        strncpy(t.text, tz->start-1, t.length);
+    } else {
+        strncpy(t.text, tz->start, t.length);
+    }
 
-    t.text[t.length] = 0;
+    if (type == Token_STRING_LIT) {
+        t.text[t.length-1] = 0;
+    }
 
     tz->last = type;
     return t;
@@ -107,6 +149,7 @@ static inline void skip_whitespace(Lexer *tz) {
 
 static Token tokenize_string(Lexer *tz) {
     u64 start_line = tz->line;
+    tz->start++;
     while (*tz->curr != '"' && !is_end(tz)) {
         if (*tz->curr == '\n') {
             fprintf(stderr, "%s:%lu: Error: unterminated string.\n", tz->file_name, start_line);
@@ -155,8 +198,8 @@ static Token tokenize_ident_or_keyword(Lexer *tz) {
     if (strncmp(tz->start, "func", 4)   == 0) return token_new(tz, Token_FUNC);
     if (strncmp(tz->start, "else", 4)   == 0) return token_new(tz, Token_ELSE);
     if (strncmp(tz->start, "while", 5)  == 0) return token_new(tz, Token_WHILE);
-    if (strncmp(tz->start, "print", 5)  == 0) return token_new(tz, Token_PRINT);
-    if (strncmp(tz->start, "null", 4)  == 0) return token_new(tz, Token_NULL);
+    if (strncmp(tz->start, "null", 4)  == 0)  return token_new(tz, Token_NULL);
+    if (strncmp(tz->start, "func", 4)  == 0)  return token_new(tz, Token_FUNC);
 
     return token_new(tz, Token_IDENT);
 }
@@ -257,18 +300,27 @@ Token next_token(Lexer *tz) {
 }
 
 bool lexer_lex(Lexer *l, TokenList *out) {
-    assert(out);
-    TokenList list;
-    token_list_init(&list);
-
-    assert(l->string_allocator.block);
-    
-    while (true) { 
+    array_init(*out, Token);
+    while (true) {
         Token t = next_token(l);
         if (t.type == Token_ERROR) return false;
-        token_list_add(&list, t);
+        array_add(*out, t);
         if (t.type == Token_EOF) break;
     }
-    *out = list;
     return true;
+}
+
+void token_list_print(const TokenList list) {
+    printf("\nThere are %ld tokens, here they are:\n", list.length);
+    for (u64 i = 0; i < list.length; i++) token_print(list.data[i]);
+}
+
+void token_print(Token t) {
+    static u64 c = 1;
+
+    printf("%lu. ", c++);
+    if (t.type == Token_SEMI_COLON)
+        printf("; (%d) on line %lu\n", t.type, t.line);
+    else
+        printf("%s (%d) on line %lu\n", t.text, t.type, t.line);
 }

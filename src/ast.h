@@ -8,9 +8,8 @@ typedef Array(struct AstNode *) Ast;
 
 typedef enum NodeTag {
     NODE_LET,
-    NODE_FUNC,
+    NODE_FUNCTION,
     NODE_BLOCK,
-    NODE_ASSIGNMENT,
 
     NODE_ENCLOSED_EXPRESSION,
     NODE_IDENTIFIER,
@@ -18,7 +17,12 @@ typedef enum NodeTag {
     NODE_FLOAT_LITERAL,
     NODE_STRING_LITERAL,
     NODE_NULL_LITERAL,
+    NODE_BOOLEAN_LITERAL,
+    NODE_SUBSCRIPT,
+    NODE_EXPRESSION_LIST,
+    NODE_CALL,
     NODE_BINARY,
+    NODE_UNARY,
 
     NODE_PRINT,
 } NodeTag;
@@ -28,12 +32,6 @@ typedef struct AstLet {
     struct AstNode *expr;
     u64 constant_pool_index;
 } AstLet;
-
-typedef struct AstFunc {
-    char *name;
-    Ast block;
-    Ast params;
-} AstFunc;
 
 typedef struct AstLiteral {
     union {
@@ -47,14 +45,13 @@ typedef struct AstPrint {
     struct AstNode *expr;
 } AstPrint;
 
-typedef struct AstAssignment {
-    struct AstNode *left;
-    struct AstNode *right;
-} AstAssignment;
-
 typedef struct AstEnclosed {
     struct AstNode *inner;
 } AstEnclosed;
+
+typedef struct AstBoolean {
+    u8 value;
+} AstBoolean;
 
 typedef struct AstBinary {
     struct AstNode *left;
@@ -62,17 +59,52 @@ typedef struct AstBinary {
     TokenType op;
 } AstBinary;
 
+typedef struct AstSubscript {
+    struct AstNode *array;
+    struct AstNode *inner_expr;
+} AstSubscript;
+
+typedef struct AstExpressionList {
+    Ast expressions;
+} AstExpressionList;
+
+typedef struct AstCall {
+    struct AstNode *name;
+    struct AstNode *args;
+} AstCall;
+
+typedef struct AstUnary {
+    struct AstNode *operand;
+    TokenType op;
+} AstUnary;
+
+typedef struct AstBlock {
+    struct AstNode *parent;
+    Ast statements;
+} AstBlock;
+
+typedef struct AstFunction {
+    char *name;
+    struct AstNode *args;
+    struct AstNode *block;
+} AstFunction;
+
 typedef struct AstNode {
     NodeTag tag;
+    u64 line;
     union {
         AstLet        let;
-        AstFunc       func;
         AstLiteral    literal;
         AstPrint      print;
-        Ast           block;
-        AstAssignment assignment;
+        AstBlock      block;
         AstEnclosed   enclosed_expr;
+        AstBoolean    boolean;
         AstBinary     binary;
+        AstSubscript  subscript;
+        AstCall       call;
+        AstExpressionList expression_list;
+        AstUnary      unary;
+        AstFunction   function;
         
         char *        identifier;
     };

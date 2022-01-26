@@ -1,13 +1,32 @@
 #include "lexer.h"
-#include "token.h"
 #include "common.h"
 #include "context.h"
 #include "parser.h"
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
+
+static void test_stack() {
+    Stack stack;
+    stack_init(&stack);
+
+    static const int NUMBER_ITEMS = 5;
+    
+    for (int i = 0; i < NUMBER_ITEMS; i++) {
+        Object o = (Object){.integer = i, .tag = OBJECT_INTEGER};
+        stack_push(&stack, o);
+    }
+
+    for (int i = 1; i < NUMBER_ITEMS+1; i++) {
+        Object o = stack_pop(&stack);
+        assert(o.integer == 5-i); // they should come out in the opposite order.
+    }
+}
 
 int main(int arg_count, char *args[]) {
+    test_stack();
+
     if (arg_count < 2) return -1;
     char *file_data = read_file(args[1]);
 
@@ -27,7 +46,7 @@ int main(int arg_count, char *args[]) {
         printf("\nThere were errors, exiting.\n");
         return -1; // TODO lots of leaks here
     }
-    if (verbose) token_list_print(&tokens);
+    if (verbose) token_list_print(tokens);
 
     parser_init(&parser, tokens, args[1]);
     ast = run_parser(&parser);
@@ -37,15 +56,16 @@ int main(int arg_count, char *args[]) {
     }
 
     if (verbose) printf("\nThere are %ld nodes in the AST.\n", ast.length);
+    if (verbose) printf("\nThere are %ld blocks in the node allocator.\n", parser.node_allocator.num_blocks);
 
-    interp = compile(ast);
+    interp = compile(ast, args[1]);
     if (interp.error_count > 0) {
         printf("\nThere were errors, exiting.\n");
         return -1; // TODO lots of leaks here
     }
 
     if (verbose) {
-        printf("\nInstruction dump:\n");
+        printf("\nThere are %ld instructions, here they are:\n", interp.instructions.length);
         for (u64 i = 0; i < interp.instructions.length; i++) {
             Instruction instr = interp.instructions.data[i];
             printf("%s %d\n", instruction_strings[instr.op], instr.arg);
@@ -59,23 +79,9 @@ int main(int arg_count, char *args[]) {
         return -1; // TODO lots of leaks here
     }
 
-    arena_free(&lexer.string_allocator);
+    string_allocator_free(&lexer.string_allocator);
+    node_allocator_free(&parser.node_allocator);
     array_free(ast);
 
     return 0;
-}
-
-static void test_stack() {
-    Stack stack;
-    stack_init(&stack);
-    
-    for (int i = 0; i < 5; i++) {
-        Object o = (Object){.integer = i, .tag = OBJECT_INTEGER};
-        stack_push(&stack, o);
-    }
-
-    for (int i = 0; i < 5; i++) {
-        Object o = stack_pop(&stack);
-        printf("%ld\n", o.integer);
-    }
 }

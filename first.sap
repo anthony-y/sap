@@ -1,3 +1,31 @@
 let x = "Hello, world!"
-x = 10
-print(x)
+// LOAD
+// STORE
+
+x = "Hello, !"
+// LOAD
+// STORE
+
+let boolean = (x == "Hello, world!")
+// LOAD
+// LOAD
+// EQUALS
+// LOAD
+// STORE
+
+print (boolean == false)
+// LOAD
+// LOAD
+
+let sub = 1 + 5
+// LOAD
+// LOAD
+// ADD
+// STORE
+// LOAD
+// STORE
+
+print(sub)
+
+print(boolean)
+// PRINT
