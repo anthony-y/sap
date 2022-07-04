@@ -8,7 +8,7 @@ typedef Array(struct AstNode *) Ast;
 
 typedef enum NodeTag {
     NODE_LET,
-    NODE_FUNCTION,
+    NODE_LAMBDA,
     NODE_BLOCK,
 
     NODE_ENCLOSED_EXPRESSION,
@@ -83,11 +83,12 @@ typedef struct AstBlock {
     Ast statements;
 } AstBlock;
 
-typedef struct AstFunction {
+typedef struct AstLambda {
     char *name;
     struct AstNode *args;
     struct AstNode *block;
-} AstFunction;
+    u64 constant_pool_index;
+} AstLambda;
 
 typedef struct AstNode {
     NodeTag tag;
@@ -104,7 +105,7 @@ typedef struct AstNode {
         AstCall       call;
         AstExpressionList expression_list;
         AstUnary      unary;
-        AstFunction   function;
+        AstLambda     lambda;
         
         char *        identifier;
     };

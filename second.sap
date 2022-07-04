@@ -1,6 +1,0 @@
-let y = 10.0 == 10
-print("hello", -5, y)
-
-func main() {
-    let x = 10;
-}

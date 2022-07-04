@@ -8,7 +8,7 @@
 
 typedef struct NodeBlock {
     AstNode data[NODE_BLOCK_LENGTH];
-    u32 used;
+    u32 num_nodes;
     struct NodeBlock *next;
 } NodeBlock;
 
@@ -16,6 +16,7 @@ typedef struct NodeAllocator {
     NodeBlock *first;
     NodeBlock *current;
     u64 num_blocks;
+    u64 total_nodes;
 } NodeAllocator;
 
 bool     node_allocator_init(NodeAllocator *sa);

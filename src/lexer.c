@@ -4,46 +4,8 @@
 #include "array.h"
 
 #include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
-
-bool string_allocator_init(StringAllocator *sa) {
-    StringBuffer *memory = (StringBuffer *)malloc(sizeof(StringBuffer));
-    if (!memory) {
-        return false;
-    }
-    *memory = (StringBuffer){0};
-    sa->first   = memory;
-    sa->current = memory;
-    sa->num_buffers = 1;
-    return true;
-}
-
-u8 *string_allocator(StringAllocator *sa, u32 length) {
-    if ((sa->current->used+length) > STRING_BUFFER_LENGTH) {
-        StringBuffer *next = (StringBuffer *)malloc(sizeof(StringBuffer));
-        if (!next) {
-            printf("bad news, out of memory");
-            return NULL;
-        }
-        sa->current->next = next;
-        sa->current = next;
-        sa->num_buffers++;
-    }
-    u8 *out = sa->current->data+sa->current->used;
-    sa->current->used += length+1;
-    return out;
-}
-
-void string_allocator_free(StringAllocator *sa) {
-    StringBuffer *buffer = sa->first;
-    while (buffer) {
-        StringBuffer *current = buffer;
-        buffer = current->next;
-        free(current);
-    }
-}
 
 /* Initializes a Lexer */
 void lexer_init(Lexer *tz, const char *path, char *data) {
@@ -108,15 +70,12 @@ Token token_new(Lexer *tz, TokenType type) {
     t.file = tz->file_name;
 
     t.text = (char *)string_allocator(&tz->string_allocator, t.length+1);
-
-    if (type > Token_SYMBOL_START && type < Token_SYMBOL_END) {
-        strncpy(t.text, tz->start-1, t.length);
-    } else {
-        strncpy(t.text, tz->start, t.length);
-    }
+    strncpy(t.text, tz->start, t.length);
 
     if (type == Token_STRING_LIT) {
         t.text[t.length-1] = 0;
+    } else {
+        t.text[t.length] = 0;
     }
 
     tz->last = type;
@@ -245,6 +204,7 @@ Token next_token(Lexer *tz) {
             // but if there was a real semi-colon it would of course be on the same line.
             Token tmp = token_new(tz, Token_SEMI_COLON);
             tmp.line--;
+            tmp.text = ";";
             return tmp;
         }
         

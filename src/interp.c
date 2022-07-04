@@ -55,12 +55,12 @@ static u8 runtime_equals(Object a, Object b) {
     return (runtime_equals1(a, b) || runtime_equals1(b, a));
 }
 
-static char *runtime_string_concat(Object a, Object b) {
+static char *runtime_string_concat(Interp *interp, Object a, Object b) {
     u64 a_len = strlen(a.pointer);
     u64 b_len = strlen(b.pointer);
     u64 new_length = a_len + b_len + 1;
 
-    char *result = malloc(new_length);
+    char *result = string_allocator(&interp->strings, new_length);
     strcpy(result, a.pointer);
     strcat(result, b.pointer);
 
@@ -69,9 +69,17 @@ static char *runtime_string_concat(Object a, Object b) {
 }
 
 void run_interpreter(Interp *interp) {
-    for (u64 i = 0; i < interp->instructions.length; i++) {
-        Instruction instr = interp->instructions.data[i];
+    while (true) {
+        if (interp->pc >= interp->instructions.length) {
+            break;
+        }
+
+        Instruction instr = interp->instructions.data[interp->pc];
+
         switch (instr.op) {
+
+        case HALT: break;
+
         case LOAD: {
             stack_push(&interp->stack, interp->constant_pool.data[instr.arg]);
         } break;
@@ -117,7 +125,7 @@ void run_interpreter(Interp *interp) {
                 result.floating = left.floating + right.floating;
             } break;
             case OBJECT_STRING: {
-                result.pointer = runtime_string_concat(left, right);
+                result.pointer = runtime_string_concat(interp, left, right);
             } break;
 
             default: {
@@ -233,9 +241,21 @@ void run_interpreter(Interp *interp) {
             }
         } break;
 
+        case JUMP: {
+            interp->last_jump_loc = interp->pc;
+            interp->pc = instr.arg;
+        } break;
+
+        case RELJUMP: {
+            interp->last_jump_loc = interp->pc;
+            interp->pc += instr.arg;
+        } break;
+
         default: {
             assert(false);
         } break;
         }
+
+        interp->pc++;
     }
 }

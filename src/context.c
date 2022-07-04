@@ -7,6 +7,12 @@
 #include <stdio.h>
 #include <string.h>
 
+void free_interpreter(Interp *interp) {
+    string_allocator_free(&interp->strings);
+    array_free(interp->constant_pool);
+    array_free(interp->instructions);
+}
+
 //
 // First-in-last-out stacks for procedures and blocks.
 //

@@ -8,6 +8,7 @@
 
 static AstNode *parse_statement(Parser *p);
 
+static AstNode *parse_lambda(Parser *p);
 static AstNode *parse_expression(Parser *p);
 static AstNode *parse_expression_list(Parser *p);
 static AstNode *parse_assignment(Parser *p);
@@ -37,7 +38,7 @@ bool node_allocator_init(NodeAllocator *allocator) {
 }
 
 AstNode *node_allocator(NodeAllocator *allocator) {
-    if (allocator->current->used+1 > NODE_BLOCK_LENGTH) {
+    if (allocator->current->num_nodes+1 > NODE_BLOCK_LENGTH) {
         NodeBlock *next = (NodeBlock *)malloc(sizeof(NodeBlock));
         if (!next) {
             printf("bad news, out of memory");
@@ -47,8 +48,12 @@ AstNode *node_allocator(NodeAllocator *allocator) {
         allocator->current = next;
         allocator->num_blocks++;
     }
-    AstNode *out = allocator->current->data+allocator->current->used;
-    allocator->current->used += sizeof(AstNode);
+
+    AstNode *out = (allocator->current->data + allocator->current->num_nodes);
+
+    allocator->current->num_nodes++;
+    allocator->total_nodes++;
+    
     return out;
 }
 
@@ -116,6 +121,7 @@ static AstNode *make_node(Parser *p, NodeTag tag) {
     assert(node);
     node->tag = tag;
     node->line = p->token->line;
+    // node->id = p->node_allocator.total_nodes-1;
     return node;
 }
 
@@ -147,7 +153,7 @@ static AstNode *parse_expression_list(Parser *p) {
 static AstNode *parse_assignment(Parser *p) {
     AstNode *or = parse_logical_or(p);
     while (match(p, Token_EQUAL)) {
-        TokenType op = p->token->type;
+        TokenType op = p->before->type;
         AstNode *right = parse_logical_or(p);
         if (!right) {
             return NULL;
@@ -164,7 +170,7 @@ static AstNode *parse_assignment(Parser *p) {
 static AstNode *parse_logical_or(Parser *p) {
     AstNode *and = parse_logical_and(p);
     while (match(p, Token_ARROW)) {
-        TokenType op = p->token->type;
+        TokenType op = p->before->type;
         AstNode *right = parse_logical_and(p);
         if (!right) {
             return NULL;
@@ -361,6 +367,7 @@ static AstNode *parse_simple_expression(Parser *p) {
         return node;
     } break;
 
+    // TODO: test array stuff again, this might need to be moved to parse_statement
     case Token_OPEN_BRACKET: {
         next(p);
         return NULL;
@@ -433,15 +440,22 @@ static AstNode *parse_simple_expression(Parser *p) {
 }
 
 static AstNode *parse_block(Parser *p) {
+    AstNode *node = make_node(p, NODE_BLOCK);
+
     Ast block;
     array_init(block, AstNode*);
 
-    while ((!match(p, Token_CLOSE_BRACE)) && p->token->type != Token_EOF) {
+    while ((!match(p, Token_CLOSE_BRACE))) {
+        if (p->token->type == Token_EOF) {
+            parser_error(p, "unexpected end of file");
+            return NULL;
+        }
         AstNode *stmt = parse_statement(p);
+        if (!stmt) break;
         array_add(block, stmt);
     }
+    match(p, Token_CLOSE_BRACE);
 
-    AstNode *node = make_node(p, NODE_BLOCK);
     node->block.statements = block;
     node->block.parent = NULL;
     return node;
@@ -491,12 +505,16 @@ static bool ensure_arguments_are_correct(AstNode *args) {
     return true;
 }
 
-static AstNode *parse_function(Parser *p) {
-    if (!match(p, Token_IDENT)) {
-        parser_error(p, "expected identifier");
+static AstNode *parse_lambda(Parser *p) {
+    AstNode *func = make_node(p, NODE_LAMBDA);
+
+    if (p->token->type != Token_IDENT) {
+        parser_error(p, "expected name of function");
         return NULL;
     }
-    char *name = p->before->text;
+
+    char *name = p->token->text;
+    next(p);
 
     if (!match(p, Token_OPEN_PAREN)) {
         parser_error(p, "expected argument list");
@@ -528,29 +546,41 @@ static AstNode *parse_function(Parser *p) {
         return NULL;
     }
 
-    AstNode *func = make_node(p, NODE_FUNCTION);
-    func->function.name = name;
-    func->function.args = args;
-    func->function.block = block;
+    func->lambda.name = name;
+    func->lambda.args = args;
+    func->lambda.block = block;
+    func->lambda.constant_pool_index = 0;
     return func;
 }
 
 static AstNode *parse_statement(Parser *p) {
     AstNode *out = NULL;
+    
     if (p->token->type == Token_EOF) {
         return NULL;
-    } else if (match(p, Token_OPEN_BRACE)) {
+    }
+    
+    if (match(p, Token_OPEN_BRACE)) {
         out = parse_block(p);
+
     } else if (match(p, Token_LET)) {
         out = parse_let(p);
+
     } else if (match(p, Token_FUNC)) {
-        out = parse_function(p);
-    } else if (match(p, Token_SEMI_COLON)) {
-        // Already advanced
+        out = parse_lambda(p);
+        match(p, Token_SEMI_COLON);
+        return out;
+
     } else {
         out = parse_expression(p);
     }
-    return NULL;
+
+    if (!match(p, Token_SEMI_COLON)) {
+        parser_error(p, "expected semi-colon");
+        return NULL;
+    }
+
+    return out;
 }
 
 Ast run_parser(Parser *p) {
@@ -563,8 +593,6 @@ Ast run_parser(Parser *p) {
         }
 
         array_add(ast, parse_statement(p));
-
-        next(p);
     }
 
     return ast;

@@ -20,7 +20,7 @@ static void test_stack() {
 
     for (int i = 1; i < NUMBER_ITEMS+1; i++) {
         Object o = stack_pop(&stack);
-        assert(o.integer == 5-i); // they should come out in the opposite order.
+        assert(o.integer == NUMBER_ITEMS-i); // they should come out in the opposite order.
     }
 }
 
@@ -55,8 +55,12 @@ int main(int arg_count, char *args[]) {
         return -1; // TODO lots of leaks here
     }
 
-    if (verbose) printf("\nThere are %ld nodes in the AST.\n", ast.length);
-    if (verbose) printf("\nThere are %ld blocks in the node allocator.\n", parser.node_allocator.num_blocks);
+    if (verbose) {
+        printf("\nsizeof(AstNode) is %ld bytes.", sizeof(AstNode));
+        printf("\nsizeof(Object) is %ld bytes.\n", sizeof(Object));
+        printf("\nThere are %ld nodes in the AST (%ld top-level).", parser.node_allocator.total_nodes, ast.length);
+        printf("\nThere are %ld blocks in the node allocator.\n", parser.node_allocator.num_blocks);
+    }
 
     interp = compile(ast, args[1]);
     if (interp.error_count > 0) {
@@ -64,13 +68,13 @@ int main(int arg_count, char *args[]) {
         return -1; // TODO lots of leaks here
     }
 
-    if (verbose) {
+    if (verbose && !PRINT_INSTRUCTIONS_DURING_COMPILE) {
         printf("\nThere are %ld instructions, here they are:\n", interp.instructions.length);
         for (u64 i = 0; i < interp.instructions.length; i++) {
             Instruction instr = interp.instructions.data[i];
-            printf("%s %d\n", instruction_strings[instr.op], instr.arg);
+            printf("Line %ld : %s %d\n", instr.line_number, instruction_strings[instr.op], instr.arg);
         }
-        printf("\n");
+        printf("\nRunning the bytecode:\n");
     }
 
     run_interpreter(&interp);
@@ -78,10 +82,11 @@ int main(int arg_count, char *args[]) {
         printf("\nThere were errors, exiting.\n");
         return -1; // TODO lots of leaks here
     }
-
+    
     string_allocator_free(&lexer.string_allocator);
     node_allocator_free(&parser.node_allocator);
     array_free(ast);
+    free_interpreter(&interp);
 
     return 0;
 }

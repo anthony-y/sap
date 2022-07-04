@@ -26,14 +26,25 @@ typedef enum ObjectTag {
     OBJECT_STRING,
     OBJECT_BOOLEAN,
     OBJECT_NULL,
+    OBJECT_LAMBDA,
 } ObjectTag;
+
+typedef struct ObjectString {
+    char *data;
+    u64 length;
+} ObjectString;
+
+typedef struct ObjectLambda {
+    
+} ObjectLambda;
 
 typedef struct Object {
     union {
         s64 integer;
         f64 floating;
-        u8 *pointer;
         u8  boolean;
+        ObjectString string;
+        void *pointer;
     };
     ObjectTag tag;
 } Object;
@@ -54,8 +65,11 @@ typedef enum Op {
     MUL,
     DIV,
     NEG,
+    JUMP,
+    RELJUMP,
+    HALT,
 } Op;
-static const char *instruction_strings[10] = {
+static const char *instruction_strings[13] = {
     "CONST",
     "STORE",
     "ADD",
@@ -66,6 +80,9 @@ static const char *instruction_strings[10] = {
     "MUL",
     "DIV",
     "NEG",
+    "JUMP",
+    "RELJUMP",
+    "HALT",
 };
 
 typedef struct Instruction {
@@ -78,10 +95,17 @@ typedef Array(Object) Constants;
 typedef Array(Instruction) Instructions;
 
 typedef struct Interp {
+    u64 pc;
+
+    // This will need to become a stack, to facilitate nested jumps
+    u64 last_jump_loc;
+
     Constants    constant_pool;
     Instructions instructions;
     Ast          ast;
     Stack        stack;
+
+    StringAllocator strings;
 
     Op    last_op;
     u64   error_count;
@@ -92,6 +116,10 @@ AstNode *find_decl(Ast ast, char *name);
 
 Interp compile(Ast ast, char *file_name);
 void run_interpreter(Interp *interp);
+void free_interpreter(Interp *interp);
+
+// Tree-walk interpreter
+void run_interpreter_slow(Ast ast, char *file_name);
 
 void     stack_init(Stack *);
 void     stack_push(Stack *, Object);

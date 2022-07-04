@@ -8,6 +8,8 @@
 #include <stdarg.h>
 #include <string.h>
 
+void compile_block(Interp *interp, AstNode *block);
+
 static void compile_error(Interp *interp, AstNode *node, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -36,7 +38,7 @@ void instr(Interp *interp, Op op, s32 arg, u64 line_number) {
     interp->last_op = op;
 
 #if PRINT_INSTRUCTIONS_DURING_COMPILE
-    printf("%s %d\n", instruction_strings[op], arg);
+    printf("Line %ld : %s %d\n", line_number, instruction_strings[op], arg);
 #endif
 }
 
@@ -150,33 +152,48 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
         return index;
     } break;
 
+    case NODE_LAMBDA: {
+        u64 index = reserve_constant(interp);
+        compile_block(interp, expr->lambda.block);
+        return index;
+    } break;
+
     default: {
         assert(false);
     } break;
     }
 }
 
-void compile_let(Interp *interp, AstLet *let) {
-    u64 line_number = ((AstNode *)let)->line;
-
+void compile_let(Interp *interp, AstNode *node) {
+    // For now at least, a variable is just a named reference to a slot in the constants table.
     u64 variable_index = reserve_constant(interp);
-    let->constant_pool_index = variable_index;
-    if (!let->expr) return; // TODO maybe STORE NULL_OBJECT_INDEX
+    node->let.constant_pool_index = variable_index; // for name lookup
 
-    u64 value_index = compile_expr(interp, let->expr);
-    instr(interp, LOAD, value_index, line_number);
-    instr(interp, STORE, variable_index, line_number);
+    AstLet let = node->let;
+
+    // Store null by default, then compile the expression if there is one.
+    // Basically, this code implements null-initialization-by-default.
+    u64 value_index = NULL_OBJECT_INDEX;
+    if (let.expr) {
+        value_index = compile_expr(interp, let.expr);
+    }
+
+    instr(interp, LOAD, value_index, node->line);
+    instr(interp, STORE, variable_index, node->line);
 }
 
-void compile_assignment(Interp *interp, AstBinary *ass) {
-    u64 line_number = ((AstNode *)ass)->line;
+void compile_assignment(Interp *interp, AstNode *node) {
+    AstBinary ass = node->binary;
 
-    u64 target_index = compile_expr(interp, ass->left);
-    u64 value_index  = compile_expr(interp, ass->right);
-    instr(interp, LOAD, value_index, line_number);
-    instr(interp, STORE, target_index, line_number);
+    u64 target_index = compile_expr(interp, ass.left);
+    u64 value_index  = compile_expr(interp, ass.right);
+
+    instr(interp, LOAD, value_index, node->line);
+    instr(interp, STORE, target_index, node->line);
 }
 
+// Compile each expression in a list, and emit loads for each one.
+// Returns the number of expressions in the list.
 u64 compile_loads_for_expression_list(Interp *interp, AstNode *list) {
     u64 i = list->expression_list.expressions.length;
     u64 j = i;
@@ -192,9 +209,10 @@ void compile_call(Interp *interp, AstNode *call) {
     s32 num_args = 0;
 
     if (call->call.args) {
+        // Multiple, comma-separated arguments.
         if (call->call.args->tag == NODE_EXPRESSION_LIST) {
             num_args = compile_loads_for_expression_list(interp, call->call.args);
-        } else {
+        } else { // Single argument
             num_args = 1;
             u64 value_index = compile_expr(interp, call->call.args);
             instr(interp, LOAD, value_index, call->line);
@@ -204,6 +222,8 @@ void compile_call(Interp *interp, AstNode *call) {
     AstNode *name = call->call.name;
     if (name->tag == NODE_IDENTIFIER) {
         char *name_ident = name->identifier;
+
+        // Temporary hard-coded lookup.
         if (strcmp(name_ident, "print") == 0) {
             instr(interp, PRINT, num_args, name->line);
             return;
@@ -211,8 +231,57 @@ void compile_call(Interp *interp, AstNode *call) {
     }
 }
 
+void compile_named_lambda(Interp *interp, AstNode *node) {
+    u64 lambda_index = reserve_constant(interp);
+    node->lambda.constant_pool_index = lambda_index;
+
+    // AstLambda f = node->lambda;
+
+    // u64 pc_index = reserve_constant(interp);
+
+    // instr(interp, LOADPC, pc_index);
+    // instr(interp, STORE, lambda_index);
+}
+
+void compile_statement(Interp *interp, AstNode *stmt) {
+    switch (stmt->tag) {
+    case NODE_LET: {
+        compile_let(interp, stmt);
+    } break;
+
+    case NODE_LAMBDA: {
+        compile_named_lambda(interp, stmt);
+    } break;
+
+    case NODE_CALL: {
+        compile_call(interp, stmt);
+    } break;
+
+    case NODE_BINARY: {
+        if (stmt->binary.op == Token_EQUAL) {
+            compile_assignment(interp, stmt);
+        }
+    } break;
+
+    default: {
+        assert(false);
+    } break;
+    }
+}
+
+void compile_block(Interp *interp, AstNode *block) {
+    if (!block->block.statements.data) return;
+    for (u64 i = 0; i < block->block.statements.length; i++) {
+        AstNode *stmt = block->block.statements.data[i];
+        compile_statement(interp, stmt);
+    }
+}
+
 Interp compile(Ast ast, char *file_name) {
     Interp interp = {0};
+
+    interp.pc = 0;
+    interp.last_jump_loc = 0;
 
     interp.ast = ast;
     interp.file_name = file_name;
@@ -221,6 +290,8 @@ Interp compile(Ast ast, char *file_name) {
     array_init(interp.instructions, Instruction);
 
     stack_init(&interp.stack);
+
+    string_allocator_init(&interp.strings);
 
     // Add transient constants (null, undefined, true, false)
     {
@@ -244,27 +315,10 @@ Interp compile(Ast ast, char *file_name) {
     for (u64 i = 0; i < ast.length; i++) {
         AstNode *node = ast.data[i];
         if (!node) break;
-
-        switch (node->tag) {
-        case NODE_LET: {
-            compile_let(&interp, &node->let);
-        } break;
-
-        case NODE_CALL: {
-            compile_call(&interp, node);
-        } break;
-
-        case NODE_BINARY: {
-            if (node->binary.op == Token_EQUAL) {
-                compile_assignment(&interp, &node->binary);
-            }
-        } break;
-
-        default: {
-            assert(false);
-        } break;
-        }
+        compile_statement(&interp, node);
     }
-    
+
+    instr(&interp, HALT, 0, 0);
+
     return interp;
 }
