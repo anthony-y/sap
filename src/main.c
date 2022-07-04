@@ -72,7 +72,10 @@ int main(int arg_count, char *args[]) {
         printf("\nThere are %ld instructions, here they are:\n", interp.instructions.length);
         for (u64 i = 0; i < interp.instructions.length; i++) {
             Instruction instr = interp.instructions.data[i];
-            printf("Line %ld : %s %d\n", instr.line_number, instruction_strings[instr.op], instr.arg);
+            printf("(%s%ld) Line %s%ld : %s %d\n", (i < 10 ? "0" : ""), i, (instr.line_number < 10 ? "0" : ""), instr.line_number, instruction_strings[instr.op], instr.arg);
+            if (instr.op == ENDFUNC) {
+                printf("\n");
+            }
         }
         printf("\nRunning the bytecode:\n");
     }

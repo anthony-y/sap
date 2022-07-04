@@ -529,9 +529,16 @@ static AstNode *parse_lambda(Parser *p) {
             assert(false);
             return NULL;
         }
-        ensure_arguments_are_correct(maybe_list);
         if (!match(p, Token_CLOSE_PAREN)) {
             parser_error(p, "expected )");
+            return NULL;
+        }
+        
+        if (ensure_arguments_are_correct(maybe_list)) {
+            args = maybe_list;
+        } else {
+            // TODO: better error
+            parser_error(p, "arguments must be declared as identififers");
             return NULL;
         }
     }
@@ -553,14 +560,25 @@ static AstNode *parse_lambda(Parser *p) {
     return func;
 }
 
+static AstNode *parse_return(Parser *p) {
+    AstNode *ret = make_node(p, NODE_RETURN);
+    ret->ret.value = NULL;
+
+    if (p->token->type == Token_SEMI_COLON) {
+        return ret;
+    }
+
+    ret->ret.value = parse_expression(p);
+    return ret;
+}
+
 static AstNode *parse_statement(Parser *p) {
     AstNode *out = NULL;
     
     if (p->token->type == Token_EOF) {
         return NULL;
-    }
-    
-    if (match(p, Token_OPEN_BRACE)) {
+
+    } else if (match(p, Token_OPEN_BRACE)) {
         out = parse_block(p);
 
     } else if (match(p, Token_LET)) {
@@ -570,6 +588,9 @@ static AstNode *parse_statement(Parser *p) {
         out = parse_lambda(p);
         match(p, Token_SEMI_COLON);
         return out;
+
+    } else if (match(p, Token_RETURN)) {
+        out = parse_return(p);
 
     } else {
         out = parse_expression(p);

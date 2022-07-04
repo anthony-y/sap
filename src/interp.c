@@ -69,6 +69,10 @@ static char *runtime_string_concat(Interp *interp, Object a, Object b) {
 }
 
 void run_interpreter(Interp *interp) {
+    assert(interp->scope == interp->root_scope);
+
+    Scope *scope = interp->scope;
+
     while (true) {
         if (interp->pc >= interp->instructions.length) {
             break;
@@ -78,19 +82,79 @@ void run_interpreter(Interp *interp) {
 
         switch (instr.op) {
 
-        case HALT: break;
+        case HALT: {
+            break;
+        } break;
 
         case LOAD: {
-            stack_push(&interp->stack, interp->constant_pool.data[instr.arg]);
+            stack_push(&scope->stack, scope->constant_pool.data[instr.arg]);
+        } break;
+
+        case CONST: {
+            Object object = {0};
+            object.tag = OBJECT_INTEGER;
+            object.integer = interp->pc;
+            stack_push(&scope->stack, object);
         } break;
 
         case STORE: { // TODO type checking
-            Object new_value = stack_pop(&interp->stack);
-            interp->constant_pool.data[instr.arg] = new_value;
+            Object new_value = stack_pop(&scope->stack);
+            scope->constant_pool.data[instr.arg] = new_value;
+        } break;
+
+        case EQUALS: {
+            Object left = stack_pop(&scope->stack);
+            Object right = stack_pop(&scope->stack);
+
+            Object result = (Object){
+                .tag=OBJECT_BOOLEAN,
+                .boolean=runtime_equals(left, right),
+            };
+            
+            stack_push(&scope->stack, result);
+        } break;
+
+        case PRINT: {
+            for (int i = 0; i < instr.arg; i++) {
+                runtime_print(stack_pop(&scope->stack));
+            }
+        } break;
+
+        case BEGINFUNC: {
+            scope->constant_pool.data[instr.arg].integer = interp->pc+1;
+            while (true) {
+                instr = interp->instructions.data[interp->pc];
+                if (instr.op == ENDFUNC) break;
+                interp->pc++;
+            }
+        } break;
+
+        case ENTERSCOPE: {
+            scope = scope->constant_pool.data[instr.arg].scope;
+        } break;
+
+        case EXITSCOPE: {
+            scope = scope->parent;
+        } break;
+
+        case RET: {
+            interp->pc = interp->last_jump_loc;
+        } break;
+
+        case JUMP: {
+            interp->last_jump_loc = interp->pc;
+            s64 newpc = stack_pop(&scope->stack).integer;
+            interp->pc = newpc;
+            continue;
+        } break;
+
+        case RELJUMP: {
+            interp->last_jump_loc = interp->pc;
+            interp->pc += instr.arg;
         } break;
 
         case NEG: {
-            Object negate = stack_pop(&interp->stack);
+            Object negate = stack_pop(&scope->stack);
             Object result = (Object){0};
             result.tag = negate.tag;
             if (negate.tag == OBJECT_INTEGER) {
@@ -101,12 +165,12 @@ void run_interpreter(Interp *interp) {
                 runtime_error(interp, instr, "operand of unary negation must be numerical");
                 return;
             }
-            stack_push(&interp->stack, result);
+            stack_push(&scope->stack, result);
         } break;
 
         case ADD: {
-            Object right = stack_pop(&interp->stack);
-            Object left  = stack_pop(&interp->stack);
+            Object right = stack_pop(&scope->stack);
+            Object left  = stack_pop(&scope->stack);
 
             if (left.tag != right.tag) {
                 runtime_error(interp, instr, "type mismatch: cannot add two different types");
@@ -133,12 +197,12 @@ void run_interpreter(Interp *interp) {
                 return;
             } break;
             }
-            stack_push(&interp->stack, result);
+            stack_push(&scope->stack, result);
         } break;
 
         case SUB: {
-            Object right = stack_pop(&interp->stack);
-            Object left  = stack_pop(&interp->stack);
+            Object right = stack_pop(&scope->stack);
+            Object left  = stack_pop(&scope->stack);
 
             if (left.tag != right.tag) {
                 runtime_error(interp, instr, "type mismatch: cannot subtract two different types");
@@ -162,12 +226,12 @@ void run_interpreter(Interp *interp) {
                 return;
             } break;
             }
-            stack_push(&interp->stack, result);
+            stack_push(&scope->stack, result);
         } break;
 
         case MUL: {
-            Object right = stack_pop(&interp->stack);
-            Object left  = stack_pop(&interp->stack);
+            Object right = stack_pop(&scope->stack);
+            Object left  = stack_pop(&scope->stack);
 
             if (left.tag != right.tag) {
                 runtime_error(interp, instr, "type mismatch: cannot multiply two different types");
@@ -191,12 +255,12 @@ void run_interpreter(Interp *interp) {
                 return;
             } break;
             }
-            stack_push(&interp->stack, result);
+            stack_push(&scope->stack, result);
         } break;
 
         case DIV: {
-            Object right = stack_pop(&interp->stack);
-            Object left  = stack_pop(&interp->stack);
+            Object right = stack_pop(&scope->stack);
+            Object left  = stack_pop(&scope->stack);
 
             if (left.tag != right.tag) {
                 runtime_error(interp, instr, "type mismatch: cannot multiply two different types");
@@ -220,37 +284,10 @@ void run_interpreter(Interp *interp) {
                 return;
             } break;
             }
-            stack_push(&interp->stack, result);
+            stack_push(&scope->stack, result);
         } break;
 
-        case EQUALS: {
-            Object left = stack_pop(&interp->stack);
-            Object right = stack_pop(&interp->stack);
-
-            Object result = (Object){
-                .tag=OBJECT_BOOLEAN,
-                .boolean=runtime_equals(left, right),
-            };
-            
-            stack_push(&interp->stack, result);
-        } break;
-
-        case PRINT: {
-            for (int i = 0; i < instr.arg; i++) {
-                runtime_print(stack_pop(&interp->stack));
-            }
-        } break;
-
-        case JUMP: {
-            interp->last_jump_loc = interp->pc;
-            interp->pc = instr.arg;
-        } break;
-
-        case RELJUMP: {
-            interp->last_jump_loc = interp->pc;
-            interp->pc += instr.arg;
-        } break;
-
+        
         default: {
             assert(false);
         } break;

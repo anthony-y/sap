@@ -9,8 +9,10 @@
 
 void free_interpreter(Interp *interp) {
     string_allocator_free(&interp->strings);
-    array_free(interp->constant_pool);
-    array_free(interp->instructions);
+
+    // MEMORY LEAK
+    // array_free(interp->constant_pool);
+    // array_free(interp->instructions);
 }
 
 //
@@ -74,51 +76,3 @@ char *read_file(const char *path) {
 
     return buffer;
 }
-
-/*
-void compile_error(Context *ctx, Token t, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-
-    // The weird looking escape characters are to set the text color
-    // to red, print "Error", and then reset the colour.
-    fprintf(stderr, "%s:%lu: \033[0;31mError\033[0m: ", t.file, t.line);
-    vfprintf(stderr, fmt, args);
-    fprintf(stderr, ".\n");
-    va_end(args);
-
-    ctx->error_count++;
-}
-
-void compile_error_start(Context *ctx, Token t, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-
-    fprintf(stderr, "%s:%lu: \033[0;31mError\033[0m: ", t.file, t.line);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-
-    ctx->error_count++;
-}
-
-void compile_error_add_line(Context *ctx, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-}
-
-void compile_error_end() {
-    fprintf(stderr, ".\n");
-}
-
-void compile_warning(Context *ctx, Token t, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-
-    fprintf(stderr, "%s:%lu: \033[0;33mWarning\033[0m: ", t.file, t.line);
-    vfprintf(stderr, fmt, args);
-    fprintf(stderr, ".\n");
-    va_end(args);
-}
-*/

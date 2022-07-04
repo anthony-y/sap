@@ -9,6 +9,48 @@
 #include <string.h>
 
 void compile_block(Interp *interp, AstNode *block);
+u64 add_scope_object(Interp *interp, Scope *scope);
+void instr(Interp *interp, Op op, s32 arg, u64 line_number);
+
+void add_primitive_objects(Scope *scope) {
+    Object undefined = (Object){.tag=OBJECT_UNDEFINED, .pointer=NULL};
+    array_add(scope->constant_pool, undefined);
+    assert(scope->constant_pool.length-1 == UNDEFINED_OBJECT_INDEX);
+
+    Object null_object = (Object){.tag=OBJECT_NULL, .pointer = NULL};
+    array_add(scope->constant_pool, null_object);
+    assert(scope->constant_pool.length-1 == NULL_OBJECT_INDEX);
+
+    Object true_object = (Object){.tag=OBJECT_BOOLEAN, .boolean = 1};
+    array_add(scope->constant_pool, true_object);
+    assert(scope->constant_pool.length-1 == TRUE_OBJECT_INDEX);
+
+    Object false_object = (Object){.tag=OBJECT_BOOLEAN, .boolean = 0};
+    array_add(scope->constant_pool, false_object);
+    assert(scope->constant_pool.length-1 == FALSE_OBJECT_INDEX);
+}
+
+u64 push_scope(Interp *interp, Ast ast) {
+    Scope *new_scope = malloc(sizeof(Scope));
+
+    new_scope->ast = ast;
+
+    array_init(new_scope->constant_pool, Object);
+    add_primitive_objects(new_scope);
+
+    stack_init(&new_scope->stack);
+
+    new_scope->parent = interp->scope;
+    u64 index = add_scope_object(interp, new_scope);
+    interp->scope = new_scope;
+    return index;
+}
+
+void pop_scope(Interp *interp) {
+    // TODO: memory leak! create a linear scope allocator which can free them all at the end
+    interp->scope = interp->scope->parent;
+    instr(interp, EXITSCOPE, 0, 0);
+}
 
 static void compile_error(Interp *interp, AstNode *node, const char *fmt, ...) {
     va_list args;
@@ -47,8 +89,8 @@ u64 add_constant_int(Interp *interp, s64 i) {
         .integer = i,
         .tag = OBJECT_INTEGER,
     };
-    array_add(interp->constant_pool, o);
-    return interp->constant_pool.length-1;
+    array_add(interp->scope->constant_pool, o);
+    return interp->scope->constant_pool.length-1;
 }
 
 u64 add_constant_string(Interp *interp, char *s) {
@@ -56,8 +98,8 @@ u64 add_constant_string(Interp *interp, char *s) {
         .pointer = s,
         .tag = OBJECT_STRING,
     };
-    array_add(interp->constant_pool, o);
-    return interp->constant_pool.length-1;
+    array_add(interp->scope->constant_pool, o);
+    return interp->scope->constant_pool.length-1;
 }
 
 u64 add_constant_float(Interp *interp, f64 f) {
@@ -65,14 +107,23 @@ u64 add_constant_float(Interp *interp, f64 f) {
         .floating = f,
         .tag = OBJECT_FLOATING,
     };
-    array_add(interp->constant_pool, o);
-    return interp->constant_pool.length-1;
+    array_add(interp->scope->constant_pool, o);
+    return interp->scope->constant_pool.length-1;
+}
+
+u64 add_scope_object(Interp *interp, Scope *scope) {
+    Object o = (Object){
+        .scope = scope,
+        .tag = OBJECT_SCOPE,
+    };
+    array_add(interp->scope->constant_pool, o);
+    return interp->scope->constant_pool.length-1;
 }
 
 u64 reserve_constant(Interp *interp) {
     Object o = (Object){0};
-    array_add(interp->constant_pool, o);
-    return interp->constant_pool.length-1;
+    array_add(interp->scope->constant_pool, o);
+    return interp->scope->constant_pool.length-1;
 }
 
 u64 compile_expr(Interp *interp, AstNode *expr) {
@@ -115,7 +166,7 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
     } break;
 
     case NODE_IDENTIFIER: {
-        AstNode *maybe_decl = find_decl(interp->ast, expr->identifier);
+        AstNode *maybe_decl = find_decl(interp->scope->ast, expr->identifier);
         if (!maybe_decl) {
             compile_error(interp, expr, "undeclared identifier '%s'", expr->identifier);
             return 0;
@@ -228,6 +279,20 @@ void compile_call(Interp *interp, AstNode *call) {
             instr(interp, PRINT, num_args, name->line);
             return;
         }
+
+        for (int i = 0; i < interp->scope->ast.length; i++) {
+            AstNode *n = interp->scope->ast.data[i];
+            if (n->tag != NODE_LAMBDA) continue;
+            AstLambda f = n->lambda;
+
+            if (strcmp(name_ident, f.name) == 0) {
+                instr(interp, LOAD, f.constant_pool_index, call->line);
+                instr(interp, JUMP, 0, call->line);
+                return;
+            }
+        }
+
+        compile_error(interp, call, "undeclared identifier '%s' (attempted invocation)", name_ident);
     }
 }
 
@@ -235,12 +300,34 @@ void compile_named_lambda(Interp *interp, AstNode *node) {
     u64 lambda_index = reserve_constant(interp);
     node->lambda.constant_pool_index = lambda_index;
 
-    // AstLambda f = node->lambda;
+    AstLambda f = node->lambda;
 
-    // u64 pc_index = reserve_constant(interp);
+    instr(interp, BEGINFUNC, lambda_index, node->line);
 
-    // instr(interp, LOADPC, pc_index);
-    // instr(interp, STORE, lambda_index);
+    u64 scope_index = push_scope(interp, f.block->block.statements);
+    instr(interp, ENTERSCOPE, scope_index, node->line);
+
+    if (f.args) compile_loads_for_expression_list(interp, f.args);
+
+    compile_block(interp, f.block);
+    pop_scope(interp);
+    
+    instr(interp, RET, 0, 0); // TODO: add line number
+
+    // TODO: add line number
+    instr(interp, ENDFUNC, 0, 0);
+}
+
+void compile_return(Interp *interp, AstNode *node) {
+    AstReturn r = node->ret;
+    if (r.value) {
+        u64 value_index = compile_expr(interp, node->ret.value);
+        instr(interp, LOAD, value_index, node->line);
+        instr(interp, RET, 1, node->line);
+        return;
+    }
+
+    instr(interp, RET, 0, node->line);
 }
 
 void compile_statement(Interp *interp, AstNode *stmt) {
@@ -263,6 +350,10 @@ void compile_statement(Interp *interp, AstNode *stmt) {
         }
     } break;
 
+    case NODE_RETURN: {
+        compile_return(interp, stmt);
+    } break;
+
     default: {
         assert(false);
     } break;
@@ -282,35 +373,24 @@ Interp compile(Ast ast, char *file_name) {
 
     interp.pc = 0;
     interp.last_jump_loc = 0;
-
-    interp.ast = ast;
     interp.file_name = file_name;
 
-    array_init(interp.constant_pool, Object);
     array_init(interp.instructions, Instruction);
 
-    stack_init(&interp.stack);
+    Scope *root_scope = malloc(sizeof(Scope));
+
+    root_scope->ast = ast;
+    root_scope->parent = NULL;
+
+    array_init(root_scope->constant_pool, Object);
+    add_primitive_objects(root_scope);
+
+    stack_init(&root_scope->stack);
+
+    interp.scope = root_scope;
+    interp.root_scope = root_scope;
 
     string_allocator_init(&interp.strings);
-
-    // Add transient constants (null, undefined, true, false)
-    {
-        Object undefined = (Object){.tag=OBJECT_UNDEFINED, .pointer=NULL};
-        array_add(interp.constant_pool, undefined);
-        assert(interp.constant_pool.length-1 == UNDEFINED_OBJECT_INDEX);
-
-        Object null_object = (Object){.tag=OBJECT_NULL, .pointer = NULL};
-        array_add(interp.constant_pool, null_object);
-        assert(interp.constant_pool.length-1 == NULL_OBJECT_INDEX);
-
-        Object true_object = (Object){.tag=OBJECT_BOOLEAN, .boolean = 1};
-        array_add(interp.constant_pool, true_object);
-        assert(interp.constant_pool.length-1 == TRUE_OBJECT_INDEX);
-
-        Object false_object = (Object){.tag=OBJECT_BOOLEAN, .boolean = 0};
-        array_add(interp.constant_pool, false_object);
-        assert(interp.constant_pool.length-1 == FALSE_OBJECT_INDEX);
-    }
 
     for (u64 i = 0; i < ast.length; i++) {
         AstNode *node = ast.data[i];

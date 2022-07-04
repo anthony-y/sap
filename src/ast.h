@@ -10,6 +10,7 @@ typedef enum NodeTag {
     NODE_LET,
     NODE_LAMBDA,
     NODE_BLOCK,
+    NODE_RETURN,
 
     NODE_ENCLOSED_EXPRESSION,
     NODE_IDENTIFIER,
@@ -90,6 +91,10 @@ typedef struct AstLambda {
     u64 constant_pool_index;
 } AstLambda;
 
+typedef struct AstReturn {
+    struct AstNode *value;
+} AstReturn;
+
 typedef struct AstNode {
     NodeTag tag;
     u64 line;
@@ -106,6 +111,7 @@ typedef struct AstNode {
         AstExpressionList expression_list;
         AstUnary      unary;
         AstLambda     lambda;
+        AstReturn     ret;
         
         char *        identifier;
     };

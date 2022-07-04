@@ -7,7 +7,7 @@
 #include "ast.h"
 
 #define CONTEXT_SCRATCH_SIZE 1024 * 3
-#define CONTEXT_STACK_SIZE   32
+#define CONTEXT_STACK_SIZE   64
 
 #define UNDEFINED_OBJECT_INDEX 0
 #define NULL_OBJECT_INDEX 1
@@ -18,6 +18,8 @@
 
 char *read_file(const char *path);
 
+typedef struct Scope Scope;
+
 typedef enum ObjectTag {
     OBJECT_UNDEFINED,
 
@@ -26,6 +28,7 @@ typedef enum ObjectTag {
     OBJECT_STRING,
     OBJECT_BOOLEAN,
     OBJECT_NULL,
+    OBJECT_SCOPE,
     OBJECT_LAMBDA,
 } ObjectTag;
 
@@ -34,16 +37,13 @@ typedef struct ObjectString {
     u64 length;
 } ObjectString;
 
-typedef struct ObjectLambda {
-    
-} ObjectLambda;
-
 typedef struct Object {
     union {
         s64 integer;
         f64 floating;
         u8  boolean;
         ObjectString string;
+        Scope *scope;
         void *pointer;
     };
     ObjectTag tag;
@@ -59,6 +59,7 @@ typedef enum Op {
     STORE,
     ADD,
     LOAD,
+    LOADPC,
     PRINT,
     EQUALS,
     SUB,
@@ -67,13 +68,19 @@ typedef enum Op {
     NEG,
     JUMP,
     RELJUMP,
+    BEGINFUNC,
+    ENDFUNC,
+    ENTERSCOPE,
+    EXITSCOPE,
+    RET,
     HALT,
 } Op;
-static const char *instruction_strings[13] = {
+static const char *instruction_strings[19] = {
     "CONST",
     "STORE",
     "ADD",
     "LOAD",
+    "LOADPC",
     "PRINT",
     "EQUALS",
     "SUB",
@@ -82,6 +89,11 @@ static const char *instruction_strings[13] = {
     "NEG",
     "JUMP",
     "RELJUMP",
+    "BEGINFUNC",
+    "ENDFUNC",
+    "ENTERSCOPE",
+    "EXITSCOPE",
+    "RET",
     "HALT",
 };
 
@@ -95,22 +107,27 @@ typedef Array(Object) Constants;
 typedef Array(Instruction) Instructions;
 
 typedef struct Interp {
+    Instructions instructions;
+    u64 last_jump_loc; // This will need to become a stack, to facilitate nested jumps
     u64 pc;
 
-    // This will need to become a stack, to facilitate nested jumps
-    u64 last_jump_loc;
-
-    Constants    constant_pool;
-    Instructions instructions;
-    Ast          ast;
-    Stack        stack;
-
+    Scope *root_scope;
+    Scope *scope;
     StringAllocator strings;
 
     Op    last_op;
     u64   error_count;
     char *file_name;
 } Interp;
+
+struct Scope {
+    Constants    constant_pool;
+    Ast          ast;
+    Stack        stack;
+
+    struct Scope *parent;
+    Interp *interp;
+};
 
 AstNode *find_decl(Ast ast, char *name);
 
