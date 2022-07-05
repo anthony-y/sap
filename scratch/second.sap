@@ -1,0 +1,19 @@
+func main()
+{
+    let x = 10
+    print(x)
+}
+
+func add()
+{
+    let a = 1
+    let b = 2
+    print(a + b)
+}
+
+add()
+main()
+
+// let a = 20
+// print(a)
+// print(a;) // BIG BAD BUG!!!

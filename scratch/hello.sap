@@ -1,0 +1,6 @@
+let x; // inited to null
+print(x);
+
+x = "Hello, world!";
+print(x);
+
