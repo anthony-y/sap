@@ -1,9 +1,0 @@
-let income  = 710.67
-let college = 80.0
-let savings = 150.0
-
-let total_spend = income - (college + savings)
-
-let disposable = 958.09 - (savings * 3.0)
-disposable = disposable - college
-print(disposable)

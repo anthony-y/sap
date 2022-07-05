@@ -316,7 +316,7 @@ void compile_call(Interp *interp, AstNode *call) {
             }
         }
 
-        compile_error(interp, call, "undeclared identifier '%s' (attempted invocation)", name_ident);
+        compile_error(interp, call, "undeclared identifier '%s'", name_ident);
     }
 }
 
