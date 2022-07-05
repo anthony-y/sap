@@ -1,6 +1,5 @@
-let x; // inited to null
-print(x);
+func greeting() {
+    return "Hello, world!"
+}
 
-x = "Hello, world!";
-print(x);
-
+print(greeting())

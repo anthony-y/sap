@@ -543,6 +543,7 @@ static AstNode *parse_lambda(Parser *p) {
         }
     }
 
+
     if (!match(p, Token_OPEN_BRACE)) {
         parser_error(p, "expected block");
         return NULL;
@@ -551,6 +552,17 @@ static AstNode *parse_lambda(Parser *p) {
     AstNode *block = parse_block(p);
     if (!block) {
         return NULL;
+    }
+
+    if (args) {
+        for (int i = 0; i < args->expression_list.expressions.length; i++) {
+            AstNode *arg = args->expression_list.expressions.data[i];
+            arg->tag = NODE_LET;
+            arg->let.name = arg->identifier;
+            arg->let.expr = NULL;
+            arg->let.constant_pool_index = 0;
+            array_add(block->block.statements, arg);
+        }
     }
 
     func->lambda.name = name;

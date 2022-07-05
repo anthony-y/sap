@@ -115,6 +115,7 @@ typedef struct AstNode {
         
         char *        identifier;
     };
+    u64 _;
 } AstNode;
 
 #endif

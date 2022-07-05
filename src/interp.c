@@ -133,12 +133,15 @@ void run_interpreter(Interp *interp) {
             scope = scope->constant_pool.data[instr.arg].scope;
         } break;
 
-        case EXITSCOPE: {
+        case RET: {
+            stack_push(&interp->return_stack, scope->constant_pool.data[instr.arg]);
             scope = scope->parent;
+            interp->pc = interp->last_jump_loc;
         } break;
 
-        case RET: {
-            interp->pc = interp->last_jump_loc;
+        case STORERET: {
+            Object value = stack_pop(&interp->return_stack);
+            scope->constant_pool.data[instr.arg] = value;
         } break;
 
         case JUMP: {

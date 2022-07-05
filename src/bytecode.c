@@ -9,6 +9,7 @@
 #include <string.h>
 
 void compile_block(Interp *interp, AstNode *block);
+void compile_call(Interp *interp, AstNode *call);
 u64 add_scope_object(Interp *interp, Scope *scope);
 void instr(Interp *interp, Op op, s32 arg, u64 line_number);
 
@@ -49,7 +50,6 @@ u64 push_scope(Interp *interp, Ast ast) {
 void pop_scope(Interp *interp) {
     // TODO: memory leak! create a linear scope allocator which can free them all at the end
     interp->scope = interp->scope->parent;
-    instr(interp, EXITSCOPE, 0, 0);
 }
 
 static void compile_error(Interp *interp, AstNode *node, const char *fmt, ...) {
@@ -209,6 +209,13 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
         return index;
     } break;
 
+    case NODE_CALL: {
+        u64 index = reserve_constant(interp);
+        compile_call(interp, expr);
+        instr(interp, STORERET, index, expr->line);
+        return index;
+    } break;
+
     default: {
         assert(false);
     } break;
@@ -307,7 +314,7 @@ void compile_named_lambda(Interp *interp, AstNode *node) {
     u64 scope_index = push_scope(interp, f.block->block.statements);
     instr(interp, ENTERSCOPE, scope_index, node->line);
 
-    if (f.args) compile_loads_for_expression_list(interp, f.args);
+    // if (f.args) compile_loads_for_expression_list(interp, f.args);
 
     compile_block(interp, f.block);
     pop_scope(interp);
@@ -322,8 +329,7 @@ void compile_return(Interp *interp, AstNode *node) {
     AstReturn r = node->ret;
     if (r.value) {
         u64 value_index = compile_expr(interp, node->ret.value);
-        instr(interp, LOAD, value_index, node->line);
-        instr(interp, RET, 1, node->line);
+        instr(interp, RET, value_index, node->line);
         return;
     }
 
@@ -374,23 +380,20 @@ Interp compile(Ast ast, char *file_name) {
     interp.pc = 0;
     interp.last_jump_loc = 0;
     interp.file_name = file_name;
-
+    string_allocator_init(&interp.strings);
     array_init(interp.instructions, Instruction);
+    stack_init(&interp.return_stack);
 
     Scope *root_scope = malloc(sizeof(Scope));
 
     root_scope->ast = ast;
     root_scope->parent = NULL;
-
     array_init(root_scope->constant_pool, Object);
     add_primitive_objects(root_scope);
-
     stack_init(&root_scope->stack);
 
     interp.scope = root_scope;
     interp.root_scope = root_scope;
-
-    string_allocator_init(&interp.strings);
 
     for (u64 i = 0; i < ast.length; i++) {
         AstNode *node = ast.data[i];

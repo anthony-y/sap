@@ -71,8 +71,8 @@ typedef enum Op {
     BEGINFUNC,
     ENDFUNC,
     ENTERSCOPE,
-    EXITSCOPE,
     RET,
+    STORERET,
     HALT,
 } Op;
 static const char *instruction_strings[19] = {
@@ -92,8 +92,8 @@ static const char *instruction_strings[19] = {
     "BEGINFUNC",
     "ENDFUNC",
     "ENTERSCOPE",
-    "EXITSCOPE",
     "RET",
+    "STORERET",
     "HALT",
 };
 
@@ -108,6 +108,8 @@ typedef Array(Instruction) Instructions;
 
 typedef struct Interp {
     Instructions instructions;
+    Stack return_stack;
+
     u64 last_jump_loc; // This will need to become a stack, to facilitate nested jumps
     u64 pc;
 
@@ -126,7 +128,6 @@ struct Scope {
     Stack        stack;
 
     struct Scope *parent;
-    Interp *interp;
 };
 
 AstNode *find_decl(Ast ast, char *name);
