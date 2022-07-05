@@ -73,9 +73,11 @@ typedef enum Op {
     ENTERSCOPE,
     RET,
     STORERET,
+    LOADARG,
+    STOREARG,
     HALT,
 } Op;
-static const char *instruction_strings[19] = {
+static const char *instruction_strings[21] = {
     "CONST",
     "STORE",
     "ADD",
@@ -94,6 +96,8 @@ static const char *instruction_strings[19] = {
     "ENTERSCOPE",
     "RET",
     "STORERET",
+    "LOADARG",
+    "STOREARG",
     "HALT",
 };
 

@@ -6,9 +6,19 @@
 #include <assert.h>
 #include <stdarg.h>
 
-static AstNode *parse_statement(Parser *p);
+static inline void next(Parser *p);
+static bool match_many(Parser *p, int n, ...);
+static bool match(Parser *p, TokenType t);
+static Token peek(Parser *p);
 
+static void parser_error(Parser *p, const char *fmt, ...);
+static AstNode *make_node(Parser *p, NodeTag tag);
+
+static AstNode *parse_statement(Parser *p);
 static AstNode *parse_lambda(Parser *p);
+static AstNode *parse_let(Parser *p);
+static AstNode *parse_return(Parser *p);
+static AstNode *parse_block(Parser *p);
 static AstNode *parse_expression(Parser *p);
 static AstNode *parse_expression_list(Parser *p);
 static AstNode *parse_assignment(Parser *p);
@@ -25,47 +35,6 @@ static AstNode *parse_selector(Parser *p, AstNode *left);
 static AstNode *parse_subscript(Parser *p, AstNode *left);
 static AstNode *parse_simple_expression(Parser *p);
 
-bool node_allocator_init(NodeAllocator *allocator) {
-    NodeBlock *memory = (NodeBlock *)malloc(sizeof(NodeBlock));
-    if (!memory) {
-        return false;
-    }
-    *memory = (NodeBlock){0};
-    allocator->first   = memory;
-    allocator->current = memory;
-    allocator->num_blocks = 1;
-    return true;
-}
-
-AstNode *node_allocator(NodeAllocator *allocator) {
-    if (allocator->current->num_nodes+1 > NODE_BLOCK_LENGTH) {
-        NodeBlock *next = (NodeBlock *)malloc(sizeof(NodeBlock));
-        if (!next) {
-            printf("bad news, out of memory");
-            return NULL;
-        }
-        allocator->current->next = next;
-        allocator->current = next;
-        allocator->num_blocks++;
-    }
-
-    AstNode *out = (allocator->current->data + allocator->current->num_nodes);
-
-    allocator->current->num_nodes++;
-    allocator->total_nodes++;
-    
-    return out;
-}
-
-void node_allocator_free(NodeAllocator *allocator) {
-    NodeBlock *buffer = allocator->first;
-    while (buffer) {
-        NodeBlock *current = buffer;
-        buffer = current->next;
-        free(current);
-    }
-}
-
 void parser_init(Parser *p, const TokenList tokens, char *file_name) {
     p->token = tokens.data;
     p->file_name = file_name;
@@ -73,56 +42,199 @@ void parser_init(Parser *p, const TokenList tokens, char *file_name) {
     node_allocator_init(&p->node_allocator);
 }
 
-static inline void next(Parser *p) {
-    p->before = p->token++;
+Ast run_parser(Parser *p) {
+    Ast ast;
+    array_init(ast, AstNode *);
+
+    while (true) {
+        if (p->token->type == Token_EOF) {
+            break;
+        }
+
+        array_add(ast, parse_statement(p));
+    }
+
+    return ast;
 }
 
-static bool match_many(Parser *p, int n, ...) {
-    va_list args;
-    va_start(args, n);
-    for (int i = 0; i < n; i++) {
-        TokenType type = va_arg(args, TokenType);
-        if (p->token->type == type) {
-            next(p);
-            return true;
+static AstNode *parse_statement(Parser *p) {
+    AstNode *out = NULL;
+    
+    if (p->token->type == Token_EOF) {
+        return NULL;
+
+    } else if (match(p, Token_OPEN_BRACE)) {
+        out = parse_block(p);
+
+    } else if (match(p, Token_LET)) {
+        out = parse_let(p);
+
+    } else if (match(p, Token_FUNC)) {
+        out = parse_lambda(p);
+        match(p, Token_SEMI_COLON);
+        return out;
+
+    } else if (match(p, Token_RETURN)) {
+        out = parse_return(p);
+
+    } else {
+        out = parse_expression(p);
+    }
+
+    if (!match(p, Token_SEMI_COLON)) {
+        parser_error(p, "expected semi-colon");
+        return NULL;
+    }
+
+    return out;
+}
+
+static AstNode *parse_block(Parser *p) {
+    AstNode *node = make_node(p, NODE_BLOCK);
+
+    Ast block;
+    array_init(block, AstNode*);
+
+    AstNode *stmt = NULL;
+    while ((!match(p, Token_CLOSE_BRACE))) {
+        if (p->token->type == Token_EOF) {
+            parser_error(p, "unexpected end of file");
+            return NULL;
+        }
+        AstNode *temp = parse_statement(p);
+        if (!temp) break;
+        array_add(block, temp);
+        stmt = temp;
+    }
+    match(p, Token_CLOSE_BRACE);
+
+    node->block.statements = block;
+    node->block.final_statement = stmt;
+    node->block.parent = NULL;
+    return node;
+}
+
+static AstNode *parse_let(Parser *p) {
+    if (p->token->type != Token_IDENT) {
+        parser_error(p, "expected name on variable declaration");
+        return NULL;
+    }
+
+    AstNode *node = make_node(p, NODE_LET);
+    node->let.name = p->token->text;
+    node->let.expr = NULL;
+
+    next(p); // skip identifier
+
+    if (p->token->type == Token_EQUAL) {
+        next(p);
+
+        AstNode *expr = parse_expression(p);
+        if (!expr) return NULL; // already errored
+
+        node->let.expr = expr;
+        return node;
+    }
+
+    // Automatic semi-colon insertion.
+    // Probably still a bug though lol.
+    if (p->token->type == Token_SEMI_COLON) {
+        return node;
+    }
+
+    parser_error(p, "expected name on variable declaration");
+    return NULL;
+}
+
+static bool ensure_arguments_are_correct(AstNode *args) {
+    if (args->tag == NODE_EXPRESSION_LIST) {
+        for (int i = 0; i < args->expression_list.expressions.length; i++) {
+            AstNode *expr = args->expression_list.expressions.data[i];
+            if (expr->tag != NODE_IDENTIFIER) return false;
+        }
+    } else if (args->tag != NODE_IDENTIFIER) {
+        return false;
+    }
+    return true;
+}
+
+static AstNode *parse_lambda(Parser *p) {
+    AstNode *func = make_node(p, NODE_LAMBDA);
+
+    if (p->token->type != Token_IDENT) {
+        parser_error(p, "expected name of function");
+        return NULL;
+    }
+
+    char *name = p->token->text;
+    next(p);
+
+    if (!match(p, Token_OPEN_PAREN)) {
+        parser_error(p, "expected argument list");
+        return NULL;
+    }
+    AstNode *args = NULL;
+
+    if (!match(p, Token_CLOSE_PAREN)) {
+        AstNode *maybe_list = parse_expression_list(p);
+        if (!maybe_list) {
+            parser_error(p, "expected argument list");
+            assert(false);
+            return NULL;
+        }
+        if (!match(p, Token_CLOSE_PAREN)) {
+            parser_error(p, "expected )");
+            return NULL;
+        }
+        
+        if (ensure_arguments_are_correct(maybe_list)) {
+            args = maybe_list;
+        } else {
+            // TODO: better error
+            parser_error(p, "arguments must be declared as identififers");
+            return NULL;
         }
     }
-    return false;
-}
 
-static bool match(Parser *p, TokenType t) {
-    if (p->token->type == t) {
-        next(p);
-        return true;
+
+    if (!match(p, Token_OPEN_BRACE)) {
+        parser_error(p, "expected block");
+        return NULL;
     }
-    return false;
+
+    AstNode *block = parse_block(p);
+    if (!block) {
+        return NULL;
+    }
+
+    if (args) {
+        for (int i = 0; i < args->expression_list.expressions.length; i++) {
+            AstNode *arg = args->expression_list.expressions.data[i];
+            arg->tag = NODE_LET;
+            arg->let.name = arg->identifier;
+            arg->let.expr = NULL;
+            arg->let.constant_pool_index = 0;
+            array_add(block->block.statements, arg);
+        }
+    }
+
+    func->lambda.name = name;
+    func->lambda.args = args;
+    func->lambda.block = block;
+    func->lambda.constant_pool_index = 0;
+    return func;
 }
 
-static Token peek(Parser *p) {
-    if (p->token->type == Token_EOF) return *p->token;
-    return p->token[1];
-}
+static AstNode *parse_return(Parser *p) {
+    AstNode *ret = make_node(p, NODE_RETURN);
+    ret->ret.value = NULL;
 
-static void parser_error(Parser *p, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
+    if (p->token->type == Token_SEMI_COLON) {
+        return ret;
+    }
 
-    // The weird looking escape characters are to: set the text color to red, print "Error", and then reset the colour.
-    fprintf(stderr, "%s:%lu: \033[0;31mSyntax error\033[0m: ", p->file_name, p->token->line);
-    vfprintf(stderr, fmt, args);
-    fprintf(stderr, ".\n");
-    va_end(args);
-
-    p->error_count++;
-}
-
-static AstNode *make_node(Parser *p, NodeTag tag) {
-    AstNode *node = node_allocator(&p->node_allocator);
-    assert(node);
-    node->tag = tag;
-    node->line = p->token->line;
-    // node->id = p->node_allocator.total_nodes-1;
-    return node;
+    ret->ret.value = parse_expression(p);
+    return ret;
 }
 
 static AstNode *parse_expression(Parser *p) {
@@ -434,199 +546,101 @@ static AstNode *parse_simple_expression(Parser *p) {
 
     default: {
         parser_error(p, "unexpected token '%.*s'", p->token->length, p->token->text);
+        while ((p->token++)->type != Token_EOF);
         return NULL;
     } break;
     }
 }
 
-static AstNode *parse_block(Parser *p) {
-    AstNode *node = make_node(p, NODE_BLOCK);
-
-    Ast block;
-    array_init(block, AstNode*);
-
-    while ((!match(p, Token_CLOSE_BRACE))) {
-        if (p->token->type == Token_EOF) {
-            parser_error(p, "unexpected end of file");
-            return NULL;
-        }
-        AstNode *stmt = parse_statement(p);
-        if (!stmt) break;
-        array_add(block, stmt);
-    }
-    match(p, Token_CLOSE_BRACE);
-
-    node->block.statements = block;
-    node->block.parent = NULL;
-    return node;
-}
-
-static AstNode *parse_let(Parser *p) {
-    if (p->token->type != Token_IDENT) {
-        parser_error(p, "expected name on variable declaration");
-        return NULL;
-    }
-
-    AstNode *node = make_node(p, NODE_LET);
-    node->let.name = p->token->text;
-    node->let.expr = NULL;
-
-    next(p); // skip identifier
-
-    if (p->token->type == Token_EQUAL) {
-        next(p);
-
-        AstNode *expr = parse_expression(p);
-        if (!expr) return NULL; // already errored
-
-        node->let.expr = expr;
-        return node;
-    }
-
-    // Automatic semi-colon insertion.
-    // Probably still a bug though lol.
-    if (p->token->type == Token_SEMI_COLON) {
-        return node;
-    }
-
-    parser_error(p, "expected name on variable declaration");
-    return NULL;
-}
-
-static bool ensure_arguments_are_correct(AstNode *args) {
-    if (args->tag == NODE_EXPRESSION_LIST) {
-        for (int i = 0; i < args->expression_list.expressions.length; i++) {
-            AstNode *expr = args->expression_list.expressions.data[i];
-            if (expr->tag != NODE_IDENTIFIER) return false;
-        }
-    } else if (args->tag != NODE_IDENTIFIER) {
+bool node_allocator_init(NodeAllocator *allocator) {
+    NodeBlock *memory = (NodeBlock *)malloc(sizeof(NodeBlock));
+    if (!memory) {
         return false;
     }
+    *memory = (NodeBlock){0};
+    allocator->first   = memory;
+    allocator->current = memory;
+    allocator->num_blocks = 1;
     return true;
 }
 
-static AstNode *parse_lambda(Parser *p) {
-    AstNode *func = make_node(p, NODE_LAMBDA);
-
-    if (p->token->type != Token_IDENT) {
-        parser_error(p, "expected name of function");
-        return NULL;
-    }
-
-    char *name = p->token->text;
-    next(p);
-
-    if (!match(p, Token_OPEN_PAREN)) {
-        parser_error(p, "expected argument list");
-        return NULL;
-    }
-    AstNode *args = NULL;
-
-    if (!match(p, Token_CLOSE_PAREN)) {
-        AstNode *maybe_list = parse_expression_list(p);
-        if (!maybe_list) {
-            parser_error(p, "expected argument list");
-            assert(false);
+AstNode *node_allocator(NodeAllocator *allocator) {
+    if (allocator->current->num_nodes+1 > NODE_BLOCK_LENGTH) {
+        NodeBlock *next = (NodeBlock *)malloc(sizeof(NodeBlock));
+        if (!next) {
+            printf("bad news, out of memory");
             return NULL;
         }
-        if (!match(p, Token_CLOSE_PAREN)) {
-            parser_error(p, "expected )");
-            return NULL;
-        }
-        
-        if (ensure_arguments_are_correct(maybe_list)) {
-            args = maybe_list;
-        } else {
-            // TODO: better error
-            parser_error(p, "arguments must be declared as identififers");
-            return NULL;
-        }
+        allocator->current->next = next;
+        allocator->current = next;
+        allocator->num_blocks++;
     }
 
+    AstNode *out = (allocator->current->data + allocator->current->num_nodes);
 
-    if (!match(p, Token_OPEN_BRACE)) {
-        parser_error(p, "expected block");
-        return NULL;
-    }
-
-    AstNode *block = parse_block(p);
-    if (!block) {
-        return NULL;
-    }
-
-    if (args) {
-        for (int i = 0; i < args->expression_list.expressions.length; i++) {
-            AstNode *arg = args->expression_list.expressions.data[i];
-            arg->tag = NODE_LET;
-            arg->let.name = arg->identifier;
-            arg->let.expr = NULL;
-            arg->let.constant_pool_index = 0;
-            array_add(block->block.statements, arg);
-        }
-    }
-
-    func->lambda.name = name;
-    func->lambda.args = args;
-    func->lambda.block = block;
-    func->lambda.constant_pool_index = 0;
-    return func;
-}
-
-static AstNode *parse_return(Parser *p) {
-    AstNode *ret = make_node(p, NODE_RETURN);
-    ret->ret.value = NULL;
-
-    if (p->token->type == Token_SEMI_COLON) {
-        return ret;
-    }
-
-    ret->ret.value = parse_expression(p);
-    return ret;
-}
-
-static AstNode *parse_statement(Parser *p) {
-    AstNode *out = NULL;
+    allocator->current->num_nodes++;
+    allocator->total_nodes++;
     
-    if (p->token->type == Token_EOF) {
-        return NULL;
-
-    } else if (match(p, Token_OPEN_BRACE)) {
-        out = parse_block(p);
-
-    } else if (match(p, Token_LET)) {
-        out = parse_let(p);
-
-    } else if (match(p, Token_FUNC)) {
-        out = parse_lambda(p);
-        match(p, Token_SEMI_COLON);
-        return out;
-
-    } else if (match(p, Token_RETURN)) {
-        out = parse_return(p);
-
-    } else {
-        out = parse_expression(p);
-    }
-
-    if (!match(p, Token_SEMI_COLON)) {
-        parser_error(p, "expected semi-colon");
-        return NULL;
-    }
-
     return out;
 }
 
-Ast run_parser(Parser *p) {
-    Ast ast;
-    array_init(ast, AstNode *);
-
-    while (true) {
-        if (p->token->type == Token_EOF) {
-            break;
-        }
-
-        array_add(ast, parse_statement(p));
+void node_allocator_free(NodeAllocator *allocator) {
+    NodeBlock *buffer = allocator->first;
+    while (buffer) {
+        NodeBlock *current = buffer;
+        buffer = current->next;
+        free(current);
     }
+}
 
-    return ast;
+static inline void next(Parser *p) {
+    p->before = p->token++;
+}
+
+static bool match_many(Parser *p, int n, ...) {
+    va_list args;
+    va_start(args, n);
+    for (int i = 0; i < n; i++) {
+        TokenType type = va_arg(args, TokenType);
+        if (p->token->type == type) {
+            next(p);
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool match(Parser *p, TokenType t) {
+    if (p->token->type == t) {
+        next(p);
+        return true;
+    }
+    return false;
+}
+
+static Token peek(Parser *p) {
+    if (p->token->type == Token_EOF) return *p->token;
+    return p->token[1];
+}
+
+static void parser_error(Parser *p, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+
+    // The weird looking escape characters are to: set the text color to red, print "Error", and then reset the colour.
+    fprintf(stderr, "%s:%lu: \033[0;31mSyntax error\033[0m: ", p->file_name, p->token->line);
+    vfprintf(stderr, fmt, args);
+    fprintf(stderr, ".\n");
+    va_end(args);
+
+    p->error_count++;
+}
+
+static AstNode *make_node(Parser *p, NodeTag tag) {
+    AstNode *node = node_allocator(&p->node_allocator);
+    assert(node);
+    node->tag = tag;
+    node->line = p->token->line;
+    // node->id = p->node_allocator.total_nodes-1;
+    return node;
 }

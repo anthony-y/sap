@@ -10,8 +10,8 @@
 
 void compile_block(Interp *interp, AstNode *block);
 void compile_call(Interp *interp, AstNode *call);
-u64 add_scope_object(Interp *interp, Scope *scope);
 void instr(Interp *interp, Op op, s32 arg, u64 line_number);
+u64 add_scope_object(Interp *interp, Scope *scope);
 
 void add_primitive_objects(Scope *scope) {
     Object undefined = (Object){.tag=OBJECT_UNDEFINED, .pointer=NULL};
@@ -35,15 +35,15 @@ u64 push_scope(Interp *interp, Ast ast) {
     Scope *new_scope = malloc(sizeof(Scope));
 
     new_scope->ast = ast;
+    new_scope->parent = interp->scope;
 
     array_init(new_scope->constant_pool, Object);
     add_primitive_objects(new_scope);
-
     stack_init(&new_scope->stack);
 
-    new_scope->parent = interp->scope;
     u64 index = add_scope_object(interp, new_scope);
     interp->scope = new_scope;
+
     return index;
 }
 
@@ -252,28 +252,28 @@ void compile_assignment(Interp *interp, AstNode *node) {
 
 // Compile each expression in a list, and emit loads for each one.
 // Returns the number of expressions in the list.
-u64 compile_loads_for_expression_list(Interp *interp, AstNode *list) {
+u64 compile_loads_for_expression_list(Interp *interp, AstNode *list, bool args) {
     u64 i = list->expression_list.expressions.length;
     u64 j = i;
     for (; j > 0; j--) {
         AstNode *expr = list->expression_list.expressions.data[j-1];
         u64 value_index = compile_expr(interp, expr);
-        instr(interp, LOAD, value_index, expr->line);
+        instr(interp, (args ? LOADARG : LOAD), value_index, expr->line);
     }
     return i;
 }
 
 void compile_call(Interp *interp, AstNode *call) {
     s32 num_args = 0;
-
     if (call->call.args) {
         // Multiple, comma-separated arguments.
         if (call->call.args->tag == NODE_EXPRESSION_LIST) {
-            num_args = compile_loads_for_expression_list(interp, call->call.args);
+            num_args = compile_loads_for_expression_list(interp, call->call.args, true);
+
         } else { // Single argument
             num_args = 1;
             u64 value_index = compile_expr(interp, call->call.args);
-            instr(interp, LOAD, value_index, call->line);
+            instr(interp, LOADARG, value_index, call->line);
         }
     }
 
@@ -290,9 +290,28 @@ void compile_call(Interp *interp, AstNode *call) {
         for (int i = 0; i < interp->scope->ast.length; i++) {
             AstNode *n = interp->scope->ast.data[i];
             if (n->tag != NODE_LAMBDA) continue;
+
             AstLambda f = n->lambda;
 
             if (strcmp(name_ident, f.name) == 0) {
+                
+                if (!f.args && num_args > 0) {
+                    compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
+                    return;
+                }
+
+                assert(f.args);
+
+                if (f.args->expression_list.expressions.length < num_args) {
+                    compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
+                    return;
+                }
+
+                if (f.args->expression_list.expressions.length > num_args) {
+                    compile_error(interp, call, "too few arguments provided at call to '%s'", name_ident);
+                    return;
+                }
+
                 instr(interp, LOAD, f.constant_pool_index, call->line);
                 instr(interp, JUMP, 0, call->line);
                 return;
@@ -306,23 +325,40 @@ void compile_call(Interp *interp, AstNode *call) {
 void compile_named_lambda(Interp *interp, AstNode *node) {
     u64 lambda_index = reserve_constant(interp);
     node->lambda.constant_pool_index = lambda_index;
-
-    AstLambda f = node->lambda;
-
     instr(interp, BEGINFUNC, lambda_index, node->line);
 
-    u64 scope_index = push_scope(interp, f.block->block.statements);
+    AstLambda f = node->lambda;
+    AstBlock  b = f.block->block;
+
+    Ast args;
+    if (f.args) {
+        args = f.args->expression_list.expressions;
+    }
+
+    u64 scope_index = push_scope(interp, b.statements);
+
+    if (f.args) {
+        // compile each as lets
+        for (int i = 0; i < args.length; i++) {
+            assert(args.data[i]->tag == NODE_LET);
+            args.data[i]->let.constant_pool_index = reserve_constant(interp);
+        }
+    }
+    
     instr(interp, ENTERSCOPE, scope_index, node->line);
 
-    // if (f.args) compile_loads_for_expression_list(interp, f.args);
+    if (f.args) {
+        for (int i = 0; i < args.length; i++) {
+            instr(interp, STOREARG, args.data[i]->let.constant_pool_index, node->line);
+        }
+    }
 
     compile_block(interp, f.block);
-    pop_scope(interp);
-    
-    instr(interp, RET, 0, 0); // TODO: add line number
 
-    // TODO: add line number
-    instr(interp, ENDFUNC, 0, 0);
+    pop_scope(interp);
+    instr(interp, RET, 0, 0);
+
+    instr(interp, ENDFUNC, 0, 0); // TODO: line numbers
 }
 
 void compile_return(Interp *interp, AstNode *node) {
@@ -332,7 +368,6 @@ void compile_return(Interp *interp, AstNode *node) {
         instr(interp, RET, value_index, node->line);
         return;
     }
-
     instr(interp, RET, 0, node->line);
 }
 

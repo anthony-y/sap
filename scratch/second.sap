@@ -6,16 +6,12 @@ func main()
 
 func add(a, b)
 {
-    let a = 1
-    let b = 2
     return a + b
 }
 
-let c = add() + 1
+let c = add(1, 34)
 print(c)
 
 // main()
 
-// let a = 20
-// print(a)
-// print(a;) // BIG BAD BUG!!!
+// push arguments onto call_storage -> store arguments in new scope

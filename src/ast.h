@@ -81,6 +81,7 @@ typedef struct AstUnary {
 
 typedef struct AstBlock {
     struct AstNode *parent;
+    struct AstNode *final_statement;
     Ast statements;
 } AstBlock;
 
@@ -115,7 +116,6 @@ typedef struct AstNode {
         
         char *        identifier;
     };
-    u64 _;
 } AstNode;
 
 #endif

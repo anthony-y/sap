@@ -89,6 +89,15 @@ void run_interpreter(Interp *interp) {
         case LOAD: {
             stack_push(&scope->stack, scope->constant_pool.data[instr.arg]);
         } break;
+        
+        case LOADARG: {
+            stack_push(&interp->return_stack, scope->constant_pool.data[instr.arg]);
+        } break;
+
+        case STOREARG: {
+            Object arg = stack_pop(&interp->return_stack);
+            scope->constant_pool.data[instr.arg] = arg;
+        } break;
 
         case CONST: {
             Object object = {0};
@@ -116,7 +125,7 @@ void run_interpreter(Interp *interp) {
 
         case PRINT: {
             for (int i = 0; i < instr.arg; i++) {
-                runtime_print(stack_pop(&scope->stack));
+                runtime_print(stack_pop(&interp->return_stack));
             }
         } break;
 
