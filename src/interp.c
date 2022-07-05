@@ -138,11 +138,11 @@ void run_interpreter(Interp *interp) {
             }
         } break;
 
-        case ENTERSCOPE: {
+        case PUSHSCOPE: {
             scope = scope->constant_pool.data[instr.arg].scope;
         } break;
 
-        case RET: {
+        case RETURN: {
             stack_push(&interp->return_stack, scope->constant_pool.data[instr.arg]);
             scope = scope->parent;
             interp->pc = interp->last_jump_loc;

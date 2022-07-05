@@ -343,7 +343,7 @@ void compile_named_lambda(Interp *interp, AstNode *node) {
         }
     }
     
-    instr(interp, ENTERSCOPE, scope_index, node->line);
+    instr(interp, PUSHSCOPE, scope_index, node->line);
 
     if (f.args) {
         for (int i = 0; i < args.length; i++) {
@@ -354,7 +354,7 @@ void compile_named_lambda(Interp *interp, AstNode *node) {
     compile_block(interp, f.block);
 
     pop_scope(interp);
-    instr(interp, RET, 0, 0);
+    instr(interp, RETURN, 0, 0);
 
     instr(interp, ENDFUNC, 0, 0); // TODO: line numbers
 }
@@ -363,10 +363,10 @@ void compile_return(Interp *interp, AstNode *node) {
     AstReturn r = node->ret;
     if (r.value) {
         u64 value_index = compile_expr(interp, node->ret.value);
-        instr(interp, RET, value_index, node->line);
+        instr(interp, RETURN, value_index, node->line);
         return;
     }
-    instr(interp, RET, 0, node->line);
+    instr(interp, RETURN, 0, node->line);
 }
 
 void compile_statement(Interp *interp, AstNode *stmt) {
