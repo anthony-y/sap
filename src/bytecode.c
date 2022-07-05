@@ -300,14 +300,12 @@ void compile_call(Interp *interp, AstNode *call) {
                     return;
                 }
 
-                assert(f.args);
-
-                if (f.args->expression_list.expressions.length < num_args) {
+                if (f.args && f.args->expression_list.expressions.length < num_args) {
                     compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
                     return;
                 }
 
-                if (f.args->expression_list.expressions.length > num_args) {
+                if (f.args && f.args->expression_list.expressions.length > num_args) {
                     compile_error(interp, call, "too few arguments provided at call to '%s'", name_ident);
                     return;
                 }
