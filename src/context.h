@@ -70,12 +70,13 @@ typedef enum Op {
     STORE,
     STORE_ARG_OR_RETVAL,
 
-    LOCAL_JUMP,
-    BEGIN_FUNC,
-    END_FUNC,
-
     CALL_FUNC,
     RETURN,
+
+    JUMP_ZERO,
+
+    BEGIN_BLOCK,
+    END_BLOCK,
 
     PRINT,
 
@@ -96,11 +97,11 @@ static const char *instruction_strings[20] = {
     "LOAD_SCOPE",
     "STORE",
     "STORE_ARG_OR_RETVAL",
-    "LOCAL_JUMP",
-    "BEGIN_FUNC",
-    "END_FUNC",
     "CALL_FUNC",
     "RETURN",
+    "JUMP_NOT_ZERO",
+    "BEGIN_BLOCK",
+    "END_BLOCK",
     "PRINT",
     "EQUALS",
     "ADD",
@@ -162,9 +163,9 @@ Object   stack_pop(Stack *);
 Object   stack_top(Stack);
 
 
-void frame_push(CallStack *s, Scope *frame);
-Scope *frame_pop(CallStack *s);
-Scope *frame_top(CallStack s);
+void frame_push(Interp *s, Scope *frame);
+Scope *frame_pop(Interp *s);
+Scope *frame_top(Interp *s);
 
 /*
 struct Module {

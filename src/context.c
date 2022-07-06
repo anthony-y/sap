@@ -33,18 +33,18 @@ Object stack_top(Stack s) {
     return s.data[s.top];
 }
 
-void frame_push(CallStack *s, Scope *frame) {
-    s->data[++s->top] = frame;
-    assert(s->top <= CONTEXT_STACK_SIZE);
+void frame_push(Interp *s, Scope *frame) {
+    s->call_stack.data[++s->call_stack.top] = frame;
+    assert(s->call_stack.top <= CONTEXT_STACK_SIZE);
 }
 
-Scope *frame_pop(CallStack *s) {
-    Scope *f = s->data[s->top];
-    s->data[s->top--] = NULL;
+Scope *frame_pop(Interp *s) {
+    Scope *f = s->call_stack.data[s->call_stack.top];
+    s->call_stack.data[s->call_stack.top--] = s->root_scope;
 }
 
-Scope *frame_top(CallStack s) {
-    return s.data[s.top];
+Scope *frame_top(Interp *s) {
+    return s->call_stack.data[s->call_stack.top];
 }
 
 AstNode *find_decl(Scope *scope, char *name) {

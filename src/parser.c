@@ -18,6 +18,7 @@ static AstNode *parse_statement(Parser *p);
 static AstNode *parse_lambda(Parser *p);
 static AstNode *parse_let(Parser *p);
 static AstNode *parse_return(Parser *p);
+static AstNode *parse_if(Parser *p);
 static AstNode *parse_block(Parser *p);
 static AstNode *parse_expression(Parser *p);
 static AstNode *parse_expression_list(Parser *p);
@@ -76,6 +77,9 @@ static AstNode *parse_statement(Parser *p) {
 
     } else if (match(p, Token_RETURN)) {
         out = parse_return(p);
+
+    } else if (match(p, Token_IF)) {
+        out = parse_if(p);
 
     } else {
         out = parse_expression(p);
@@ -196,7 +200,6 @@ static AstNode *parse_lambda(Parser *p) {
         }
     }
 
-
     if (!match(p, Token_OPEN_BRACE)) {
         parser_error(p, "expected block");
         return NULL;
@@ -208,13 +211,23 @@ static AstNode *parse_lambda(Parser *p) {
     }
 
     if (args) {
-        for (int i = 0; i < args->expression_list.expressions.length; i++) {
-            AstNode *arg = args->expression_list.expressions.data[i];
-            arg->tag = NODE_LET;
-            arg->let.name = arg->identifier;
-            arg->let.expr = NULL;
-            arg->let.constant_pool_index = 0;
-            array_add(block->block.statements, arg);
+        if (args->tag == NODE_EXPRESSION_LIST) {
+            for (int i = 0; i < args->expression_list.expressions.length; i++) {
+                AstNode *arg = args->expression_list.expressions.data[i];
+                arg->tag = NODE_LET;
+                arg->let.name = arg->identifier;
+                arg->let.expr = NULL;
+                arg->let.constant_pool_index = 0;
+                array_add(block->block.statements, arg);
+            }
+        }
+
+        else {
+            args->tag = NODE_LET;
+            args->let.name = args->identifier;
+            args->let.expr = NULL;
+            args->let.constant_pool_index = 0;
+            array_add(block->block.statements, args);
         }
     }
 
@@ -235,6 +248,31 @@ static AstNode *parse_return(Parser *p) {
 
     ret->ret.value = parse_expression(p);
     return ret;
+}
+
+static AstNode *parse_if(Parser *p) {
+    AstNode *cf = make_node(p, NODE_CONTROL_FLOW_IF);
+
+    AstNode *condition = parse_expression(p);
+    if (!condition) {
+        parser_error(p, "expected 'if' to have a condition");
+        return NULL;
+    }
+
+    if (!match(p, Token_OPEN_BRACE)) {
+        parser_error(p, "expected 'if' to have a block");
+        return NULL;
+    }
+
+    AstNode *block = parse_block(p);
+    if (!block) {
+        // Already errored
+        return NULL;
+    }
+
+    cf->cf.condition = condition;
+    cf->cf.block = block;
+    return cf;
 }
 
 static AstNode *parse_expression(Parser *p) {

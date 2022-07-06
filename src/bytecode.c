@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <string.h>
 
+void compile_if(Interp *interp, AstNode *cf);
 void compile_block(Interp *interp, AstNode *block);
 void compile_call(Interp *interp, AstNode *call);
 void instr(Interp *interp, Op op, s32 arg, u64 line_number);
@@ -290,20 +291,33 @@ void compile_call(Interp *interp, AstNode *call) {
             AstLambda f = n->lambda;
 
             if (strcmp(name_ident, f.name) == 0) {
-                
+            
                 if (!f.args && num_args > 0) {
                     compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
                     return;
                 }
 
-                if (f.args && f.args->expression_list.expressions.length < num_args) {
-                    compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
-                    return;
+                if (f.args && f.args->tag == NODE_EXPRESSION_LIST) {
+                    if (f.args && f.args->expression_list.expressions.length < num_args) {
+                        compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
+                        return;
+                    }
+
+                    if (f.args && f.args->expression_list.expressions.length > num_args) {
+                        compile_error(interp, call, "too few arguments provided at call to '%s'", name_ident);
+                        return;
+                    }
                 }
 
-                if (f.args && f.args->expression_list.expressions.length > num_args) {
-                    compile_error(interp, call, "too few arguments provided at call to '%s'", name_ident);
-                    return;
+                else if (f.args && f.args->tag == NODE_IDENTIFIER) {
+                    if (num_args > 1) {
+                        compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
+                        return;
+                    }
+                    if (num_args < 1) {
+                        compile_error(interp, call, "too few arguments provided at call to '%s'", name_ident);
+                        return;
+                    }
                 }
 
                 instr(interp, LOAD_PC, 0, call->line);
@@ -319,7 +333,7 @@ void compile_call(Interp *interp, AstNode *call) {
 void compile_func(Interp *interp, AstNode *node) {
     u64 lambda_index = reserve_constant(interp);
     node->lambda.constant_pool_index = lambda_index;
-    instr(interp, BEGIN_FUNC, lambda_index, node->line);
+    instr(interp, BEGIN_BLOCK, lambda_index, node->line);
 
     AstLambda f = node->lambda;
     AstBlock  b = f.block->block;
@@ -352,7 +366,7 @@ void compile_func(Interp *interp, AstNode *node) {
     pop_scope(interp);
     instr(interp, RETURN, 0, 0);
 
-    instr(interp, END_FUNC, 0, 0); // TODO: line numbers
+    instr(interp, END_BLOCK, lambda_index, 0); // TODO: line numbers
 }
 
 void compile_return(Interp *interp, AstNode *node) {
@@ -363,6 +377,23 @@ void compile_return(Interp *interp, AstNode *node) {
         return;
     }
     instr(interp, RETURN, 0, node->line);
+}
+
+void compile_if(Interp *interp, AstNode *cf) {
+    u64 condition_index = compile_expr(interp, cf->cf.condition);
+    instr(interp, LOAD, condition_index, cf->line);
+
+    instr(interp, JUMP_ZERO, 0, cf->line);
+    u64 count = interp->instructions.length-1;
+
+    u64 block_id = reserve_constant(interp);
+
+    instr(interp, BEGIN_BLOCK, block_id, cf->cf.block->line);
+    compile_block(interp, cf->cf.block);
+    instr(interp, END_BLOCK, block_id, 0); // TODO line number
+
+    Instruction *to_patch = (interp->instructions.data + count);
+    to_patch->arg = interp->instructions.length;
 }
 
 void compile_statement(Interp *interp, AstNode *stmt) {
@@ -389,6 +420,10 @@ void compile_statement(Interp *interp, AstNode *stmt) {
         compile_return(interp, stmt);
     } break;
 
+    case NODE_CONTROL_FLOW_IF: {
+        compile_if(interp, stmt);
+    } break;
+
     default: {
         assert(false);
     } break;
@@ -397,6 +432,7 @@ void compile_statement(Interp *interp, AstNode *stmt) {
 
 void compile_block(Interp *interp, AstNode *block) {
     if (!block->block.statements.data) return;
+
     for (u64 i = 0; i < block->block.statements.length; i++) {
         AstNode *stmt = block->block.statements.data[i];
         compile_statement(interp, stmt);

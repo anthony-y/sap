@@ -12,6 +12,7 @@ typedef enum NodeTag {
     NODE_BLOCK,
     NODE_RETURN,
     NODE_PRINT,
+    NODE_CONTROL_FLOW_IF,
 
     NODE_ENCLOSED_EXPRESSION,
     NODE_IDENTIFIER,
@@ -32,6 +33,11 @@ typedef struct AstLet {
     struct AstNode *expr;
     u64 constant_pool_index;
 } AstLet;
+
+typedef struct AstIf {
+    struct AstNode *condition;
+    struct AstNode *block;
+} AstIf;
 
 typedef struct AstLiteral {
     union {
@@ -112,6 +118,7 @@ typedef struct AstNode {
         AstUnary      unary;
         AstLambda     lambda;
         AstReturn     ret;
+        AstIf         cf;
         
         char *        identifier;
     };

@@ -71,8 +71,8 @@ static char *runtime_string_concat(Interp *interp, Object a, Object b) {
 void run_interpreter(Interp *interp) {
     assert(interp->scope == interp->root_scope);
 
-    frame_push(&interp->call_stack, interp->root_scope);
-    Scope *scope = frame_top(interp->call_stack);
+    frame_push(interp, interp->root_scope);
+    Scope *scope = frame_top(interp);
 
     while (true) {
         if (interp->pc >= interp->instructions.length || interp->pc < 0) {
@@ -80,7 +80,7 @@ void run_interpreter(Interp *interp) {
         }
 
         Instruction instr = interp->instructions.data[interp->pc];
-        scope = frame_top(interp->call_stack);
+        scope = frame_top(interp);
 
         switch (instr.op) {
 
@@ -128,18 +128,22 @@ void run_interpreter(Interp *interp) {
             }
         } break;
 
-        case BEGIN_FUNC: {
+        case BEGIN_BLOCK: {
+            s32 block_id = instr.arg;
             interp->root_scope->constant_pool.data[instr.arg].integer = interp->pc+1;
             while (true) {
                 instr = interp->instructions.data[interp->pc];
-                if (instr.op == END_FUNC) break;
+                if (instr.op == END_BLOCK && instr.arg == block_id) break;
                 interp->pc++;
             }
         } break;
 
+        case END_BLOCK: {
+        } break;
+
         case LOAD_SCOPE: {
             Scope *new_scope = interp->root_scope->constant_pool.data[instr.arg].scope;
-            frame_push(&interp->call_stack, new_scope);
+            frame_push(interp, new_scope);
         } break;
 
         case RETURN: {
@@ -150,7 +154,7 @@ void run_interpreter(Interp *interp) {
             stack_push(&interp->call_storage, scope->constant_pool.data[instr.arg]);
 
             // Return to last scope
-            frame_pop(&interp->call_stack);
+            frame_pop(interp);
         } break;
 
         case LOAD_PC: {
@@ -166,7 +170,18 @@ void run_interpreter(Interp *interp) {
             continue;
         } break;
 
-        // JUMP_HERE for local if/while ?
+        case JUMP_ZERO: {
+            Object what = stack_pop(&scope->stack);
+            assert(what.tag == OBJECT_BOOLEAN);
+
+            // It's zero so we need to jump to where the argument says
+            if (what.boolean == 0) {
+                // TODO may need to add to jump stack before modifying
+                interp->pc = instr.arg;
+            } else {
+                interp->pc++;
+            }
+        } break;
 
         case NEG: {
             Object negate = stack_pop(&scope->stack);
