@@ -9,7 +9,7 @@
 
 static void test_stack() {
     Stack stack;
-    stack_init(&stack);
+    stack.top = 0;
 
     static const int NUMBER_ITEMS = 5;
     

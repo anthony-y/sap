@@ -11,6 +11,7 @@ typedef enum NodeTag {
     NODE_LAMBDA,
     NODE_BLOCK,
     NODE_RETURN,
+    NODE_PRINT,
 
     NODE_ENCLOSED_EXPRESSION,
     NODE_IDENTIFIER,
@@ -24,8 +25,6 @@ typedef enum NodeTag {
     NODE_CALL,
     NODE_BINARY,
     NODE_UNARY,
-
-    NODE_PRINT,
 } NodeTag;
 
 typedef struct AstLet {

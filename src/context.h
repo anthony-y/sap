@@ -54,6 +54,11 @@ typedef struct Stack {
     u64 top;
 } Stack;
 
+typedef struct CallStack {
+    Scope *data[CONTEXT_STACK_SIZE];
+    u64 top;
+} CallStack;
+
 typedef enum Op {
     CONST,
     STORE,
@@ -66,18 +71,19 @@ typedef enum Op {
     MUL,
     DIV,
     NEG,
-    JUMP,
+    CALL_FUNC,
     RELJUMP,
     BEGINFUNC,
     ENDFUNC,
-    PUSHSCOPE,
+    LOAD_SCOPE,
     RETURN,
     STORERET,
     LOADARG,
     STOREARG,
+    LOAD_PC,
     HALT,
 } Op;
-static const char *instruction_strings[21] = {
+static const char *instruction_strings[22] = {
     "CONST",
     "STORE",
     "ADD",
@@ -89,15 +95,16 @@ static const char *instruction_strings[21] = {
     "MUL",
     "DIV",
     "NEG",
-    "JUMP",
+    "CALL_FUNC",
     "RELJUMP",
     "BEGINFUNC",
     "ENDFUNC",
-    "PUSHSCOPE",
+    "LOAD_SCOPE",
     "RETURN",
     "STORERET",
     "LOADARG",
     "STOREARG",
+    "LOAD_PC",
     "HALT",
 };
 
@@ -112,13 +119,16 @@ typedef Array(Instruction) Instructions;
 
 typedef struct Interp {
     Instructions instructions;
-    Stack return_stack;
-
-    u64 last_jump_loc; // This will need to become a stack, to facilitate nested jumps
     u64 pc;
+    u64 last_jump_loc;
+
+    Stack call_storage;
+    Stack jump_stack; // TODO: make this not use Objects cus thats slow and bad
+    CallStack call_stack;
 
     Scope *root_scope;
     Scope *scope;
+
     StringAllocator strings;
 
     Op    last_op;
@@ -134,7 +144,7 @@ struct Scope {
     struct Scope *parent;
 };
 
-AstNode *find_decl(Ast ast, char *name);
+AstNode *find_decl(Scope *scope, char *name);
 
 Interp compile(Ast ast, char *file_name);
 void run_interpreter(Interp *interp);
@@ -147,6 +157,11 @@ void     stack_init(Stack *);
 void     stack_push(Stack *, Object);
 Object   stack_pop(Stack *);
 Object   stack_top(Stack);
+
+
+void frame_push(CallStack *s, Scope *frame);
+Scope *frame_pop(CallStack *s);
+Scope *frame_top(CallStack s);
 
 /*
 struct Module {

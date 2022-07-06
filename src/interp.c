@@ -71,14 +71,16 @@ static char *runtime_string_concat(Interp *interp, Object a, Object b) {
 void run_interpreter(Interp *interp) {
     assert(interp->scope == interp->root_scope);
 
-    Scope *scope = interp->scope;
+    frame_push(&interp->call_stack, interp->root_scope);
+    Scope *scope = frame_top(interp->call_stack);
 
     while (true) {
-        if (interp->pc >= interp->instructions.length) {
+        if (interp->pc >= interp->instructions.length || interp->pc < 0) {
             break;
         }
 
         Instruction instr = interp->instructions.data[interp->pc];
+        scope = frame_top(interp->call_stack);
 
         switch (instr.op) {
 
@@ -86,24 +88,26 @@ void run_interpreter(Interp *interp) {
             break;
         } break;
 
+        case CONST: {
+            assert(false);
+        } break;
+
         case LOAD: {
             stack_push(&scope->stack, scope->constant_pool.data[instr.arg]);
         } break;
-        
+
         case LOADARG: {
-            stack_push(&interp->return_stack, scope->constant_pool.data[instr.arg]);
+            stack_push(&interp->call_storage, scope->constant_pool.data[instr.arg]);
         } break;
 
+        // TODO these are the same, remove one and rename the other
         case STOREARG: {
-            Object arg = stack_pop(&interp->return_stack);
+            Object arg = stack_pop(&interp->call_storage);
             scope->constant_pool.data[instr.arg] = arg;
         } break;
-
-        case CONST: {
-            Object object = {0};
-            object.tag = OBJECT_INTEGER;
-            object.integer = interp->pc;
-            stack_push(&scope->stack, object);
+        case STORERET: {
+            Object value = stack_pop(&interp->call_storage);
+            scope->constant_pool.data[instr.arg] = value;
         } break;
 
         case STORE: { // TODO type checking
@@ -125,12 +129,12 @@ void run_interpreter(Interp *interp) {
 
         case PRINT: {
             for (int i = 0; i < instr.arg; i++) {
-                runtime_print(stack_pop(&interp->return_stack));
+                runtime_print(stack_pop(&interp->call_storage));
             }
         } break;
 
         case BEGINFUNC: {
-            scope->constant_pool.data[instr.arg].integer = interp->pc+1;
+            interp->root_scope->constant_pool.data[instr.arg].integer = interp->pc+1;
             while (true) {
                 instr = interp->instructions.data[interp->pc];
                 if (instr.op == ENDFUNC) break;
@@ -138,32 +142,59 @@ void run_interpreter(Interp *interp) {
             }
         } break;
 
-        case PUSHSCOPE: {
-            scope = scope->constant_pool.data[instr.arg].scope;
+
+
+                        
+
+
+
+
+
+
+
+
+
+
+
+        case LOAD_SCOPE: {
+            Scope *new_scope = interp->root_scope->constant_pool.data[instr.arg].scope;
+            frame_push(&interp->call_stack, new_scope);
         } break;
 
         case RETURN: {
-            stack_push(&interp->return_stack, scope->constant_pool.data[instr.arg]);
-            scope = scope->parent;
-            interp->pc = interp->last_jump_loc;
+            // Return to caller instruction
+            interp->pc = stack_pop(&interp->jump_stack).integer;
+
+            // Push return value
+            stack_push(&interp->call_storage, scope->constant_pool.data[instr.arg]);
+
+            // Return to last scope
+            frame_pop(&interp->call_stack);
         } break;
 
-        case STORERET: {
-            Object value = stack_pop(&interp->return_stack);
-            scope->constant_pool.data[instr.arg] = value;
+        case LOAD_PC: {
+            Object pc = (Object){0};
+            pc.integer = interp->pc+1;
+            pc.tag = OBJECT_INTEGER;
+            stack_push(&interp->jump_stack, pc);
         } break;
 
-        case JUMP: {
-            interp->last_jump_loc = interp->pc;
-            s64 newpc = stack_pop(&scope->stack).integer;
-            interp->pc = newpc;
+        case CALL_FUNC: {
+            // Jump to the new place
+            interp->pc = interp->root_scope->constant_pool.data[instr.arg].integer;
             continue;
         } break;
 
-        case RELJUMP: {
-            interp->last_jump_loc = interp->pc;
-            interp->pc += instr.arg;
-        } break;
+
+
+
+
+
+
+
+
+
+        // JUMP_HERE for local if/while ?
 
         case NEG: {
             Object negate = stack_pop(&scope->stack);

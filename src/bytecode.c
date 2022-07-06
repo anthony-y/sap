@@ -39,7 +39,7 @@ u64 push_scope(Interp *interp, Ast ast) {
 
     array_init(new_scope->constant_pool, Object);
     add_primitive_objects(new_scope);
-    stack_init(&new_scope->stack);
+    new_scope->stack.top = 0;
 
     u64 index = add_scope_object(interp, new_scope);
     interp->scope = new_scope;
@@ -63,10 +63,6 @@ static void compile_error(Interp *interp, AstNode *node, const char *fmt, ...) {
     va_end(args);
 
     interp->error_count++;
-}
-
-void stack_init(Stack *stack) {
-    stack->top = 0;
 }
 
 void instr(Interp *interp, Op op, s32 arg, u64 line_number) {
@@ -166,7 +162,7 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
     } break;
 
     case NODE_IDENTIFIER: {
-        AstNode *maybe_decl = find_decl(interp->scope->ast, expr->identifier);
+        AstNode *maybe_decl = find_decl(interp->scope, expr->identifier);
         if (!maybe_decl) {
             compile_error(interp, expr, "undeclared identifier '%s'", expr->identifier);
             return 0;
@@ -287,8 +283,8 @@ void compile_call(Interp *interp, AstNode *call) {
             return;
         }
 
-        for (int i = 0; i < interp->scope->ast.length; i++) {
-            AstNode *n = interp->scope->ast.data[i];
+        for (int i = 0; i < interp->root_scope->ast.length; i++) {
+            AstNode *n = interp->root_scope->ast.data[i];
             if (n->tag != NODE_LAMBDA) continue;
 
             AstLambda f = n->lambda;
@@ -310,8 +306,8 @@ void compile_call(Interp *interp, AstNode *call) {
                     return;
                 }
 
-                instr(interp, LOAD, f.constant_pool_index, call->line);
-                instr(interp, JUMP, 0, call->line);
+                instr(interp, LOAD_PC, 0, call->line);
+                instr(interp, CALL_FUNC, f.constant_pool_index, call->line);
                 return;
             }
         }
@@ -343,7 +339,7 @@ void compile_named_lambda(Interp *interp, AstNode *node) {
         }
     }
     
-    instr(interp, PUSHSCOPE, scope_index, node->line);
+    instr(interp, LOAD_SCOPE, scope_index, node->line);
 
     if (f.args) {
         for (int i = 0; i < args.length; i++) {
@@ -415,7 +411,9 @@ Interp compile(Ast ast, char *file_name) {
     interp.file_name = file_name;
     string_allocator_init(&interp.strings);
     array_init(interp.instructions, Instruction);
-    stack_init(&interp.return_stack);
+    interp.call_storage.top = 0;
+    interp.call_stack.top = 0;
+    interp.jump_stack.top = 0;
 
     Scope *root_scope = malloc(sizeof(Scope));
 
@@ -423,7 +421,7 @@ Interp compile(Ast ast, char *file_name) {
     root_scope->parent = NULL;
     array_init(root_scope->constant_pool, Object);
     add_primitive_objects(root_scope);
-    stack_init(&root_scope->stack);
+    root_scope->stack.top = 0;
 
     interp.scope = root_scope;
     interp.root_scope = root_scope;

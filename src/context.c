@@ -33,16 +33,33 @@ Object stack_top(Stack s) {
     return s.data[s.top];
 }
 
-AstNode *find_decl(Ast ast, char *name) {
-    for (u64 i = 0; i < ast.length; i++) {
-        AstNode *node = ast.data[i];
+void frame_push(CallStack *s, Scope *frame) {
+    s->data[++s->top] = frame;
+    assert(s->top <= CONTEXT_STACK_SIZE);
+}
+
+Scope *frame_pop(CallStack *s) {
+    Scope *f = s->data[s->top];
+    s->data[s->top--] = NULL;
+}
+
+Scope *frame_top(CallStack s) {
+    return s.data[s.top];
+}
+
+AstNode *find_decl(Scope *scope, char *name) {
+    if (!scope) return NULL;
+
+    for (u64 i = 0; i < scope->ast.length; i++) {
+        AstNode *node = scope->ast.data[i];
         if (node->tag != NODE_LET) continue;
         char *node_name = node->let.name;
         if (strcmp(name, node_name) == 0) {
             return node;
         }
     }
-    return NULL;
+
+    return find_decl(scope->parent, name);
 }
 
 char *read_file(const char *path) {

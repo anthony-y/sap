@@ -1,16 +1,14 @@
-func main()
-{
-    let x = 10
-    print(x)
-}
-
-func add(a, b)
-{
+func add(a, b) {
     return a + b
 }
 
-let c = add(1, 34)
-print(c)
+func mul(a, b) {
+    return a * b
+}
 
+func main() {
+    let c = add(1, 34)
+    let d = mul(add(1, 34), c)
+    print(d)
+}
 main()
-
