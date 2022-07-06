@@ -316,7 +316,7 @@ void compile_call(Interp *interp, AstNode *call) {
     }
 }
 
-void compile_named_lambda(Interp *interp, AstNode *node) {
+void compile_func(Interp *interp, AstNode *node) {
     u64 lambda_index = reserve_constant(interp);
     node->lambda.constant_pool_index = lambda_index;
     instr(interp, BEGINFUNC, lambda_index, node->line);
@@ -372,7 +372,7 @@ void compile_statement(Interp *interp, AstNode *stmt) {
     } break;
 
     case NODE_LAMBDA: {
-        compile_named_lambda(interp, stmt);
+        compile_func(interp, stmt);
     } break;
 
     case NODE_CALL: {
