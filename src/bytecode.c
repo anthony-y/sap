@@ -465,8 +465,17 @@ Interp compile(Ast ast, char *file_name) {
     for (u64 i = 0; i < ast.length; i++) {
         AstNode *node = ast.data[i];
         if (!node) break;
+        if (node->tag != NODE_LAMBDA) continue;
+        compile_func(&interp, node);
+    }
+
+    for (u64 i = 0; i < ast.length; i++) {
+        AstNode *node = ast.data[i];
+        if (!node) break;
+        if (node->tag == NODE_LAMBDA) continue;
         compile_statement(&interp, node);
     }
+
 
     instr(&interp, HALT, 0, 0);
 

@@ -1,0 +1,20 @@
+let a = true
+if a {
+    print(a)
+}
+
+func main(b, c) {
+    if b {
+        print("WASSUP", c)
+    }
+}
+
+func add(x, y) {
+    return x + y
+}
+
+func f(b, c) {
+    main(b, add(12, 13))
+    return
+}
+f(true, -1)
