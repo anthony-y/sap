@@ -96,20 +96,15 @@ void run_interpreter(Interp *interp) {
             stack_push(&scope->stack, scope->constant_pool.data[instr.arg]);
         } break;
 
-        case LOADARG: {
+        case LOAD_ARG: {
             stack_push(&interp->call_storage, scope->constant_pool.data[instr.arg]);
         } break;
 
-        // TODO these are the same, remove one and rename the other
-        case STOREARG: {
+        case STORE_ARG_OR_RETVAL: {
             Object arg = stack_pop(&interp->call_storage);
             scope->constant_pool.data[instr.arg] = arg;
         } break;
-        case STORERET: {
-            Object value = stack_pop(&interp->call_storage);
-            scope->constant_pool.data[instr.arg] = value;
-        } break;
-
+        
         case STORE: { // TODO type checking
             Object new_value = stack_pop(&scope->stack);
             scope->constant_pool.data[instr.arg] = new_value;
@@ -133,28 +128,14 @@ void run_interpreter(Interp *interp) {
             }
         } break;
 
-        case BEGINFUNC: {
+        case BEGIN_FUNC: {
             interp->root_scope->constant_pool.data[instr.arg].integer = interp->pc+1;
             while (true) {
                 instr = interp->instructions.data[interp->pc];
-                if (instr.op == ENDFUNC) break;
+                if (instr.op == END_FUNC) break;
                 interp->pc++;
             }
         } break;
-
-
-
-                        
-
-
-
-
-
-
-
-
-
-
 
         case LOAD_SCOPE: {
             Scope *new_scope = interp->root_scope->constant_pool.data[instr.arg].scope;
@@ -184,15 +165,6 @@ void run_interpreter(Interp *interp) {
             interp->pc = interp->root_scope->constant_pool.data[instr.arg].integer;
             continue;
         } break;
-
-
-
-
-
-
-
-
-
 
         // JUMP_HERE for local if/while ?
 

@@ -208,7 +208,7 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
     case NODE_CALL: {
         u64 index = reserve_constant(interp);
         compile_call(interp, expr);
-        instr(interp, STORERET, index, expr->line);
+        instr(interp, STORE_ARG_OR_RETVAL, index, expr->line);
         return index;
     } break;
 
@@ -254,7 +254,7 @@ u64 compile_loads_for_expression_list(Interp *interp, AstNode *list, bool args) 
     for (; j > 0; j--) {
         AstNode *expr = list->expression_list.expressions.data[j-1];
         u64 value_index = compile_expr(interp, expr);
-        instr(interp, (args ? LOADARG : LOAD), value_index, expr->line);
+        instr(interp, (args ? LOAD_ARG : LOAD), value_index, expr->line);
     }
     return i;
 }
@@ -269,7 +269,7 @@ void compile_call(Interp *interp, AstNode *call) {
         } else { // Single argument
             num_args = 1;
             u64 value_index = compile_expr(interp, call->call.args);
-            instr(interp, LOADARG, value_index, call->line);
+            instr(interp, LOAD_ARG, value_index, call->line);
         }
     }
 
@@ -319,7 +319,7 @@ void compile_call(Interp *interp, AstNode *call) {
 void compile_func(Interp *interp, AstNode *node) {
     u64 lambda_index = reserve_constant(interp);
     node->lambda.constant_pool_index = lambda_index;
-    instr(interp, BEGINFUNC, lambda_index, node->line);
+    instr(interp, BEGIN_FUNC, lambda_index, node->line);
 
     AstLambda f = node->lambda;
     AstBlock  b = f.block->block;
@@ -343,7 +343,7 @@ void compile_func(Interp *interp, AstNode *node) {
 
     if (f.args) {
         for (int i = 0; i < args.length; i++) {
-            instr(interp, STOREARG, args.data[i]->let.constant_pool_index, node->line);
+            instr(interp, STORE_ARG_OR_RETVAL, args.data[i]->let.constant_pool_index, node->line);
         }
     }
 
@@ -352,7 +352,7 @@ void compile_func(Interp *interp, AstNode *node) {
     pop_scope(interp);
     instr(interp, RETURN, 0, 0);
 
-    instr(interp, ENDFUNC, 0, 0); // TODO: line numbers
+    instr(interp, END_FUNC, 0, 0); // TODO: line numbers
 }
 
 void compile_return(Interp *interp, AstNode *node) {
