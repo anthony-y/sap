@@ -13,6 +13,8 @@ typedef enum NodeTag {
     NODE_RETURN,
     NODE_PRINT,
     NODE_CONTROL_FLOW_IF,
+    NODE_CONTROL_FLOW_LOOP,
+    NODE_BREAK_OR_CONTINUE,
 
     NODE_ENCLOSED_EXPRESSION,
     NODE_IDENTIFIER,
@@ -37,7 +39,18 @@ typedef struct AstLet {
 typedef struct AstIf {
     struct AstNode *condition;
     struct AstNode *block;
+    struct AstNode *else_branch;
 } AstIf;
+
+typedef struct AstBreakCont {
+    TokenType which;
+    struct AstNode *name; // TODO named loops
+} AstBreakCont;
+
+typedef struct AstLoop {
+    struct AstNode *condition;
+    struct AstNode *block;
+} AstLoop;
 
 typedef struct AstLiteral {
     union {
@@ -119,6 +132,8 @@ typedef struct AstNode {
         AstLambda     lambda;
         AstReturn     ret;
         AstIf         cf;
+        AstLoop       loop;
+        AstBreakCont  break_cont;
         
         char *        identifier;
     };

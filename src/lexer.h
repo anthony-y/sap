@@ -42,6 +42,9 @@ typedef enum TokenType {
     Token_USING,
     Token_LET,
     Token_FUNC,
+    Token_LOOP,
+    Token_BREAK,
+    Token_CONTINUE,
 
     Token_SIZE_OF,
 

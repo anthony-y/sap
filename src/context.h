@@ -7,7 +7,7 @@
 #include "ast.h"
 
 #define CONTEXT_SCRATCH_SIZE 1024 * 3
-#define CONTEXT_STACK_SIZE   64
+#define CONTEXT_STACK_SIZE   128
 
 #define UNDEFINED_OBJECT_INDEX 0
 #define NULL_OBJECT_INDEX 1
@@ -73,7 +73,9 @@ typedef enum Op {
     CALL_FUNC,
     RETURN,
 
-    JUMP_ZERO,
+    JUMP,
+    JUMP_TRUE,
+    JUMP_FALSE,
 
     BEGIN_BLOCK,
     END_BLOCK,
@@ -81,6 +83,11 @@ typedef enum Op {
     PRINT,
 
     EQUALS,
+    LESS_THAN_EQUALS,
+    GREATER_THAN_EQUALS,
+    LESS_THAN,
+    GREATER_THAN,
+
     ADD,
     SUB,
     MUL,
@@ -89,7 +96,7 @@ typedef enum Op {
     
     HALT,
 } Op;
-static const char *instruction_strings[20] = {
+static const char *instruction_strings[26] = {
     "CONST",
     "LOAD",
     "LOAD_PC",
@@ -99,11 +106,17 @@ static const char *instruction_strings[20] = {
     "STORE_ARG_OR_RETVAL",
     "CALL_FUNC",
     "RETURN",
-    "JUMP_NOT_ZERO",
+    "JUMP",
+    "JUMP_TRUE",
+    "JUMP_FALSE",
     "BEGIN_BLOCK",
     "END_BLOCK",
     "PRINT",
     "EQUALS",
+    "LESS_THAN_EQUALS",
+    "GREATER_THAN_EQUALS",
+    "LESS_THAN",
+    "GREATER_THAN",
     "ADD",
     "SUB",
     "MUL",

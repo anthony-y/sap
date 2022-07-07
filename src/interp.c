@@ -69,8 +69,6 @@ static char *runtime_string_concat(Interp *interp, Object a, Object b) {
 }
 
 void run_interpreter(Interp *interp) {
-    assert(interp->scope == interp->root_scope);
-
     frame_push(interp, interp->root_scope);
     Scope *scope = frame_top(interp);
 
@@ -170,17 +168,32 @@ void run_interpreter(Interp *interp) {
             continue;
         } break;
 
-        case JUMP_ZERO: {
+        case JUMP_TRUE: {
             Object what = stack_pop(&scope->stack);
             assert(what.tag == OBJECT_BOOLEAN);
 
             // It's zero so we need to jump to where the argument says
-            if (what.boolean == 0) {
+            if (what.boolean == 1) {
                 // TODO may need to add to jump stack before modifying
                 interp->pc = instr.arg;
             } else {
                 interp->pc++;
             }
+        } break;
+
+        case JUMP_FALSE: {
+            Object what = stack_pop(&scope->stack);
+            assert(what.tag == OBJECT_BOOLEAN);
+
+            if (what.boolean == 0) {
+                interp->pc = instr.arg;
+            } else {
+                interp->pc++;
+            }
+        } break;
+
+        case JUMP: {
+            interp->pc = instr.arg;
         } break;
 
         case NEG: {
@@ -195,6 +208,122 @@ void run_interpreter(Interp *interp) {
                 runtime_error(interp, instr, "operand of unary negation must be numerical");
                 return;
             }
+            stack_push(&scope->stack, result);
+        } break;
+
+        case GREATER_THAN: {
+            Object right = stack_pop(&scope->stack);
+            Object left  = stack_pop(&scope->stack);
+
+            if (left.tag != right.tag) {
+                runtime_error(interp, instr, "type mismatch: cannot compare two different types");
+                return;
+            }
+
+            Object result = (Object){0};
+            result.tag = OBJECT_BOOLEAN;
+
+            switch (left.tag) {
+            case OBJECT_INTEGER: {
+                result.boolean = (left.integer > right.integer);
+            } break;
+            case OBJECT_FLOATING: {
+                result.boolean = (left.floating > right.floating);
+            } break;
+
+            default: {
+                runtime_error(interp, instr, "operands of '>' must be integer or float");
+                return;
+            } break;
+            }
+
+            stack_push(&scope->stack, result);
+        } break;
+
+        case GREATER_THAN_EQUALS: {
+            Object right = stack_pop(&scope->stack);
+            Object left  = stack_pop(&scope->stack);
+
+            if (left.tag != right.tag) {
+                runtime_error(interp, instr, "type mismatch: cannot compare two different types");
+                return;
+            }
+
+            Object result = (Object){0};
+            result.tag = OBJECT_BOOLEAN;
+
+            switch (left.tag) {
+            case OBJECT_INTEGER: {
+                result.boolean = (left.integer >= right.integer);
+            } break;
+            case OBJECT_FLOATING: {
+                result.boolean = (left.floating >= right.floating);
+            } break;
+
+            default: {
+                runtime_error(interp, instr, "operands of '>=' must be integer or float");
+                return;
+            } break;
+            }
+
+            stack_push(&scope->stack, result);
+        } break;
+
+        case LESS_THAN: {
+            Object right = stack_pop(&scope->stack);
+            Object left  = stack_pop(&scope->stack);
+
+            if (left.tag != right.tag) {
+                runtime_error(interp, instr, "type mismatch: cannot compare two different types");
+                return;
+            }
+
+            Object result = (Object){0};
+            result.tag = OBJECT_BOOLEAN;
+
+            switch (left.tag) {
+            case OBJECT_INTEGER: {
+                result.boolean = (left.integer < right.integer);
+            } break;
+            case OBJECT_FLOATING: {
+                result.boolean = (left.floating < right.floating);
+            } break;
+
+            default: {
+                runtime_error(interp, instr, "operands of '<' must be integer or float");
+                return;
+            } break;
+            }
+
+            stack_push(&scope->stack, result);
+        } break;
+
+        case LESS_THAN_EQUALS: {
+            Object right = stack_pop(&scope->stack);
+            Object left  = stack_pop(&scope->stack);
+
+            if (left.tag != right.tag) {
+                runtime_error(interp, instr, "type mismatch: cannot compare two different types");
+                return;
+            }
+
+            Object result = (Object){0};
+            result.tag = OBJECT_BOOLEAN;
+
+            switch (left.tag) {
+            case OBJECT_INTEGER: {
+                result.boolean = (left.integer <= right.integer);
+            } break;
+            case OBJECT_FLOATING: {
+                result.boolean = (left.floating <= right.floating);
+            } break;
+
+            default: {
+                runtime_error(interp, instr, "operands of '<=' must be integer or float");
+                return;
+            } break;
+            }
+
             stack_push(&scope->stack, result);
         } break;
 

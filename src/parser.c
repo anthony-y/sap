@@ -19,6 +19,8 @@ static AstNode *parse_lambda(Parser *p);
 static AstNode *parse_let(Parser *p);
 static AstNode *parse_return(Parser *p);
 static AstNode *parse_if(Parser *p);
+static AstNode *parse_break_continue(Parser *p);
+static AstNode *parse_loop(Parser *p);
 static AstNode *parse_block(Parser *p);
 static AstNode *parse_expression(Parser *p);
 static AstNode *parse_expression_list(Parser *p);
@@ -80,6 +82,12 @@ static AstNode *parse_statement(Parser *p) {
 
     } else if (match(p, Token_IF)) {
         out = parse_if(p);
+        
+    } else if (match(p, Token_WHILE)) {
+        out = parse_loop(p);
+    
+    } else if (p->token->type == Token_BREAK || p->token->type == Token_CONTINUE) {
+        out = parse_break_continue(p);
 
     } else {
         out = parse_expression(p);
@@ -273,6 +281,39 @@ static AstNode *parse_if(Parser *p) {
     cf->cf.condition = condition;
     cf->cf.block = block;
     return cf;
+}
+
+static AstNode *parse_loop(Parser *p) {
+    AstNode *cf = make_node(p, NODE_CONTROL_FLOW_LOOP);
+
+    AstNode *condition = parse_expression(p);
+    if (!condition) {
+        parser_error(p, "expected 'if' to have a condition");
+        return NULL;
+    }
+
+    if (!match(p, Token_OPEN_BRACE)) {
+        parser_error(p, "expected 'if' to have a block");
+        return NULL;
+    }
+
+    AstNode *block = parse_block(p);
+    if (!block) {
+        // Already errored
+        return NULL;
+    }
+
+    cf->cf.condition = condition;
+    cf->cf.block = block;
+    return cf;
+}
+
+static AstNode *parse_break_continue(Parser *p) {
+    AstNode *node = make_node(p, NODE_BREAK_OR_CONTINUE);
+    node->break_cont.which = p->token->type;
+    node->break_cont.name = NULL; // TODO
+    next(p); // keyword
+    return node;
 }
 
 static AstNode *parse_expression(Parser *p) {

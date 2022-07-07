@@ -8,9 +8,11 @@
 #include <stdarg.h>
 #include <string.h>
 
+void compile_statement(Interp *interp, AstNode *stmt);
 void compile_if(Interp *interp, AstNode *cf);
 void compile_block(Interp *interp, AstNode *block);
 void compile_call(Interp *interp, AstNode *call);
+void compile_break_or_continue(Interp *interp, AstNode *bc);
 void instr(Interp *interp, Op op, s32 arg, u64 line_number);
 u64 add_scope_object(Interp *interp, Scope *scope);
 
@@ -182,6 +184,18 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
         switch (expr->binary.op) {
         case Token_EQUAL_EQUAL: {
             instr(interp, EQUALS, 0, expr->line);
+        } break;
+        case Token_GREATER: {
+            instr(interp, GREATER_THAN, 0, expr->line);
+        } break;
+        case Token_LESS: {
+            instr(interp, LESS_THAN, 0, expr->line);
+        } break;
+        case Token_GREATER_EQUAL: {
+            instr(interp, GREATER_THAN_EQUALS, 0, expr->line);
+        } break;
+        case Token_LESS_EQUAL: {
+            instr(interp, LESS_THAN_EQUALS, 0, expr->line);
         } break;
         case Token_PLUS: {
             instr(interp, ADD, 0, expr->line);
@@ -383,7 +397,7 @@ void compile_if(Interp *interp, AstNode *cf) {
     u64 condition_index = compile_expr(interp, cf->cf.condition);
     instr(interp, LOAD, condition_index, cf->line);
 
-    instr(interp, JUMP_ZERO, 0, cf->line);
+    instr(interp, JUMP_FALSE, 0, cf->line);
     u64 count = interp->instructions.length-1;
 
     u64 block_id = reserve_constant(interp);
@@ -393,7 +407,58 @@ void compile_if(Interp *interp, AstNode *cf) {
     instr(interp, END_BLOCK, block_id, 0); // TODO line number
 
     Instruction *to_patch = (interp->instructions.data + count);
-    to_patch->arg = interp->instructions.length;
+    to_patch->arg = interp->instructions.length-1;
+}
+
+typedef Array(u64) PatchLocations;
+static PatchLocations breaks_to_patch;
+static u64 continue_loc = 0;
+
+void compile_loop(Interp *interp, AstNode *cf) {
+    u64 condition_jump = interp->instructions.length-1;
+
+    u64 condition_index = compile_expr(interp, cf->cf.condition);
+    instr(interp, LOAD, condition_index, cf->line);
+
+    // Emit incomplete JUMP_FALSE
+    // We will use `patch_location` to patch this instruction once the block has been compiled.
+    // NOTE: we only do this in case compile_block causes the instructions array to be reallocated.
+    //       In such an instance, a pointer to the instruction made here could be invalidated.
+    instr(interp, JUMP_FALSE, 0, cf->line);
+    u64 patch_location = interp->instructions.length-1;
+
+    u64 block_id = reserve_constant(interp);
+
+    instr(interp, BEGIN_BLOCK, block_id, cf->cf.block->line);
+
+    continue_loc = condition_jump;
+    compile_block(interp, cf->cf.block);
+
+    instr(interp, JUMP, condition_jump, 0);
+    instr(interp, END_BLOCK, block_id, 0); // TODO line number
+
+    // Do the aforementioned patching.
+    u64 exit_loc = interp->instructions.length-1;
+    Instruction *to_patch = (interp->instructions.data + patch_location);
+    to_patch->arg = exit_loc;
+
+    for (int i = 0; i < breaks_to_patch.length; i++) {
+        u64 loc = breaks_to_patch.data[i];
+        Instruction *instr = interp->instructions.data + loc;
+        instr->arg = exit_loc;
+    }
+
+    // TODO maybe clear patches array here
+}
+
+void compile_break_continue(Interp *interp, AstNode *stmt) {
+    AstBreakCont bc = stmt->break_cont;
+    if (bc.which == Token_CONTINUE) {
+        instr(interp, JUMP, continue_loc, stmt->line);
+        return;
+    }
+    instr(interp, JUMP, 0, stmt->line);
+    array_add(breaks_to_patch, interp->instructions.length-1);
 }
 
 void compile_statement(Interp *interp, AstNode *stmt) {
@@ -422,6 +487,14 @@ void compile_statement(Interp *interp, AstNode *stmt) {
 
     case NODE_CONTROL_FLOW_IF: {
         compile_if(interp, stmt);
+    } break;
+
+    case NODE_CONTROL_FLOW_LOOP: {
+        compile_loop(interp, stmt);
+    } break;
+
+    case NODE_BREAK_OR_CONTINUE: {
+        compile_break_continue(interp, stmt);
     } break;
 
     default: {
@@ -462,6 +535,8 @@ Interp compile(Ast ast, char *file_name) {
     interp.scope = root_scope;
     interp.root_scope = root_scope;
 
+    array_init(breaks_to_patch, u64);
+
     for (u64 i = 0; i < ast.length; i++) {
         AstNode *node = ast.data[i];
         if (!node) break;
@@ -476,6 +551,7 @@ Interp compile(Ast ast, char *file_name) {
         compile_statement(&interp, node);
     }
 
+    array_free(breaks_to_patch);
 
     instr(&interp, HALT, 0, 0);
 

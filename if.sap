@@ -6,6 +6,9 @@ if a {
 func main(b, c) {
     if b {
         print("WASSUP", c)
+        if b {
+            print("fuck yea")
+        }
     }
 }
 
