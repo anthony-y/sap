@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "context.h"
 #include "common.h"
 
 #include <stdlib.h>
@@ -38,6 +39,8 @@ static AstNode *parse_selector(Parser *p, AstNode *left);
 static AstNode *parse_subscript(Parser *p, AstNode *left);
 static AstNode *parse_simple_expression(Parser *p);
 
+static BlockStack block_stack;
+
 void parser_init(Parser *p, const TokenList tokens, char *file_name) {
     p->token = tokens.data;
     p->file_name = file_name;
@@ -46,6 +49,8 @@ void parser_init(Parser *p, const TokenList tokens, char *file_name) {
 }
 
 Ast run_parser(Parser *p) {
+    init_blocks(&block_stack);
+
     Ast ast;
     array_init(ast, AstNode *);
 
@@ -53,7 +58,6 @@ Ast run_parser(Parser *p) {
         if (p->token->type == Token_EOF) {
             break;
         }
-
         array_add(ast, parse_statement(p));
     }
 
@@ -107,6 +111,9 @@ static AstNode *parse_block(Parser *p) {
     Ast block;
     array_init(block, AstNode*);
 
+    node->block.parent = current_block(block_stack);
+    push_block(&block_stack, node);
+
     AstNode *stmt = NULL;
     while ((!match(p, Token_CLOSE_BRACE))) {
         if (p->token->type == Token_EOF) {
@@ -120,9 +127,10 @@ static AstNode *parse_block(Parser *p) {
     }
     match(p, Token_CLOSE_BRACE);
 
+    pop_block(&block_stack);
+
     node->block.statements = block;
     node->block.final_statement = stmt;
-    node->block.parent = NULL;
     return node;
 }
 

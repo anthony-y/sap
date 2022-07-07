@@ -1,11 +1,11 @@
 let i   = 0
 let max = 10
 
-let x = 0
 
-while i < max {
+while i <= max {
     print(i)
 
+    let x = 0
     while x < 3 {
         print(x)
         x = x+1
@@ -14,4 +14,3 @@ while i < max {
     i = i+1
     x = 0
 }
-print(i)

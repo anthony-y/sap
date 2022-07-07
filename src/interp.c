@@ -70,7 +70,7 @@ static char *runtime_string_concat(Interp *interp, Object a, Object b) {
 
 void run_interpreter(Interp *interp) {
     frame_push(interp, interp->root_scope);
-    Scope *scope = frame_top(interp);
+    StackFrame *scope = frame_top(interp);
 
     while (true) {
         if (interp->pc >= interp->instructions.length || interp->pc < 0) {
@@ -140,11 +140,15 @@ void run_interpreter(Interp *interp) {
         } break;
 
         case LOAD_SCOPE: {
-            Scope *new_scope = interp->root_scope->constant_pool.data[instr.arg].scope;
+            StackFrame *new_scope = interp->root_scope->constant_pool.data[instr.arg].scope;
             frame_push(interp, new_scope);
         } break;
 
-        case RETURN: {
+        case POP_SCOPE: {
+            frame_pop(interp);
+        } break;
+
+        case POP_SCOPE_RETURN: {
             // Return to caller instruction
             interp->pc = stack_pop(&interp->jump_stack).integer;
 

@@ -8,15 +8,17 @@
 #include <stdarg.h>
 #include <string.h>
 
+static BlockStack block_stack;
+
 void compile_statement(Interp *interp, AstNode *stmt);
 void compile_if(Interp *interp, AstNode *cf);
 void compile_block(Interp *interp, AstNode *block);
 void compile_call(Interp *interp, AstNode *call);
 void compile_break_or_continue(Interp *interp, AstNode *bc);
 void instr(Interp *interp, Op op, s32 arg, u64 line_number);
-u64 add_scope_object(Interp *interp, Scope *scope);
+u64 add_scope_object(Interp *interp, StackFrame *scope);
 
-void add_primitive_objects(Scope *scope) {
+void add_primitive_objects(StackFrame *scope) {
     Object undefined = (Object){.tag=OBJECT_UNDEFINED, .pointer=NULL};
     array_add(scope->constant_pool, undefined);
     assert(scope->constant_pool.length-1 == UNDEFINED_OBJECT_INDEX);
@@ -34,8 +36,8 @@ void add_primitive_objects(Scope *scope) {
     assert(scope->constant_pool.length-1 == FALSE_OBJECT_INDEX);
 }
 
-u64 push_scope(Interp *interp, Ast ast) {
-    Scope *new_scope = malloc(sizeof(Scope));
+u64 push_frame(Interp *interp, Ast ast) {
+    StackFrame *new_scope = malloc(sizeof(StackFrame));
 
     new_scope->ast = ast;
     new_scope->parent = interp->scope;
@@ -50,7 +52,7 @@ u64 push_scope(Interp *interp, Ast ast) {
     return index;
 }
 
-void pop_scope(Interp *interp) {
+void pop_frame(Interp *interp) {
     // TODO: memory leak! create a linear scope allocator which can free them all at the end
     interp->scope = interp->scope->parent;
 }
@@ -110,7 +112,7 @@ u64 add_constant_float(Interp *interp, f64 f) {
     return interp->scope->constant_pool.length-1;
 }
 
-u64 add_scope_object(Interp *interp, Scope *scope) {
+u64 add_scope_object(Interp *interp, StackFrame *scope) {
     Object o = (Object){
         .scope = scope,
         .tag = OBJECT_SCOPE,
@@ -165,7 +167,7 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
     } break;
 
     case NODE_IDENTIFIER: {
-        AstNode *maybe_decl = find_decl(interp->scope, expr->identifier);
+        AstNode *maybe_decl = find_decl(current_block(block_stack), interp->root_scope, expr->identifier);
         if (!maybe_decl) {
             compile_error(interp, expr, "undeclared identifier '%s'", expr->identifier);
             return 0;
@@ -357,7 +359,7 @@ void compile_func(Interp *interp, AstNode *node) {
         args = f.args->expression_list.expressions;
     }
 
-    u64 scope_index = push_scope(interp, b.statements);
+    u64 scope_index = push_frame(interp, b.statements);
 
     if (f.args) {
         // compile each as lets
@@ -377,8 +379,8 @@ void compile_func(Interp *interp, AstNode *node) {
 
     compile_block(interp, f.block);
 
-    pop_scope(interp);
-    instr(interp, RETURN, 0, 0);
+    pop_frame(interp);
+    instr(interp, POP_SCOPE_RETURN, 0, 0);
 
     instr(interp, END_BLOCK, lambda_index, 0); // TODO: line numbers
 }
@@ -387,10 +389,10 @@ void compile_return(Interp *interp, AstNode *node) {
     AstReturn r = node->ret;
     if (r.value) {
         u64 value_index = compile_expr(interp, node->ret.value);
-        instr(interp, RETURN, value_index, node->line);
+        instr(interp, POP_SCOPE_RETURN, value_index, node->line);
         return;
     }
-    instr(interp, RETURN, 0, node->line);
+    instr(interp, POP_SCOPE_RETURN, 0, node->line);
 }
 
 void compile_if(Interp *interp, AstNode *cf) {
@@ -506,17 +508,20 @@ void compile_statement(Interp *interp, AstNode *stmt) {
 void compile_block(Interp *interp, AstNode *block) {
     if (!block->block.statements.data) return;
 
+    push_block(&block_stack, block);
+
     for (u64 i = 0; i < block->block.statements.length; i++) {
         AstNode *stmt = block->block.statements.data[i];
         compile_statement(interp, stmt);
     }
+
+    pop_block(&block_stack);
 }
 
 Interp compile(Ast ast, char *file_name) {
     Interp interp = {0};
 
     interp.pc = 0;
-    interp.last_jump_loc = 0;
     interp.file_name = file_name;
     string_allocator_init(&interp.strings);
     array_init(interp.instructions, Instruction);
@@ -524,7 +529,7 @@ Interp compile(Ast ast, char *file_name) {
     interp.call_stack.top = 0;
     interp.jump_stack.top = 0;
 
-    Scope *root_scope = malloc(sizeof(Scope));
+    StackFrame *root_scope = malloc(sizeof(StackFrame));
 
     root_scope->ast = ast;
     root_scope->parent = NULL;
@@ -535,6 +540,7 @@ Interp compile(Ast ast, char *file_name) {
     interp.scope = root_scope;
     interp.root_scope = root_scope;
 
+    init_blocks(&block_stack);
     array_init(breaks_to_patch, u64);
 
     for (u64 i = 0; i < ast.length; i++) {

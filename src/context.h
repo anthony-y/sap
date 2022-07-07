@@ -18,7 +18,7 @@
 
 char *read_file(const char *path);
 
-typedef struct Scope Scope;
+typedef struct StackFrame StackFrame;
 
 typedef enum ObjectTag {
     OBJECT_UNDEFINED,
@@ -43,7 +43,7 @@ typedef struct Object {
         f64 floating;
         u8  boolean;
         ObjectString string;
-        Scope *scope;
+        StackFrame *scope;
         void *pointer;
     };
     ObjectTag tag;
@@ -55,9 +55,14 @@ typedef struct Stack {
 } Stack;
 
 typedef struct CallStack {
-    Scope *data[CONTEXT_STACK_SIZE];
+    StackFrame *data[CONTEXT_STACK_SIZE];
     u64 top;
 } CallStack;
+
+typedef struct BlockStack {
+    AstNode *blocks[CONTEXT_STACK_SIZE];
+    int top;
+} BlockStack;
 
 typedef enum Op {
     CONST,
@@ -71,7 +76,9 @@ typedef enum Op {
     STORE_ARG_OR_RETVAL,
 
     CALL_FUNC,
-    RETURN,
+    POP_SCOPE_RETURN,
+    
+    POP_SCOPE,
 
     JUMP,
     JUMP_TRUE,
@@ -96,7 +103,7 @@ typedef enum Op {
     
     HALT,
 } Op;
-static const char *instruction_strings[26] = {
+static const char *instruction_strings[27] = {
     "CONST",
     "LOAD",
     "LOAD_PC",
@@ -105,7 +112,8 @@ static const char *instruction_strings[26] = {
     "STORE",
     "STORE_ARG_OR_RETVAL",
     "CALL_FUNC",
-    "RETURN",
+    "POP_SCOPE_RETURN",
+    "POP_SCOPE",
     "JUMP",
     "JUMP_TRUE",
     "JUMP_FALSE",
@@ -137,14 +145,13 @@ typedef Array(Instruction) Instructions;
 typedef struct Interp {
     Instructions instructions;
     u64 pc;
-    u64 last_jump_loc;
 
     Stack call_storage;
     Stack jump_stack; // TODO: make this not use Objects cus thats slow and bad
     CallStack call_stack;
 
-    Scope *root_scope;
-    Scope *scope;
+    StackFrame *root_scope;
+    StackFrame *scope;
 
     StringAllocator strings;
 
@@ -153,32 +160,33 @@ typedef struct Interp {
     char *file_name;
 } Interp;
 
-struct Scope {
+struct StackFrame {
     Constants    constant_pool;
     Ast          ast;
     Stack        stack;
 
-    struct Scope *parent;
+    struct StackFrame *parent;
 };
 
-AstNode *find_decl(Scope *scope, char *name);
+AstNode *find_decl_in_frame(StackFrame *in, char *name);
+AstNode *find_decl(AstNode *block, StackFrame *root_scope, char *name);
 
 Interp compile(Ast ast, char *file_name);
 void run_interpreter(Interp *interp);
 void free_interpreter(Interp *interp);
 
-// Tree-walk interpreter
-void run_interpreter_slow(Ast ast, char *file_name);
+void   stack_push(Stack *, Object);
+Object stack_pop(Stack *);
+Object stack_top(Stack);
 
-void     stack_init(Stack *);
-void     stack_push(Stack *, Object);
-Object   stack_pop(Stack *);
-Object   stack_top(Stack);
+void frame_push(Interp *s, StackFrame *frame);
+StackFrame *frame_pop(Interp *s);
+StackFrame *frame_top(Interp *s);
 
-
-void frame_push(Interp *s, Scope *frame);
-Scope *frame_pop(Interp *s);
-Scope *frame_top(Interp *s);
+void init_blocks(BlockStack *);
+void push_block(BlockStack *, AstNode *);
+AstNode *pop_block(BlockStack *s);
+AstNode *current_block(BlockStack s);
 
 /*
 struct Module {

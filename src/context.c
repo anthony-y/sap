@@ -7,6 +7,43 @@
 #include <stdio.h>
 #include <string.h>
 
+AstNode *find_decl_in_frame(StackFrame *in, char *name) {
+    for (u64 i = 0; i < in->ast.length; i++) {
+        AstNode *node = in->ast.data[i];
+        if (node->tag != NODE_LET) continue;
+        if (strcmp(name, node->let.name) == 0) {
+            return node;
+        }
+    }
+    return NULL;
+}
+
+AstNode *find_decl(AstNode *block, StackFrame *root_scope, char *name) {
+    if (!block) {
+        return find_decl_in_frame(root_scope, name);
+    }
+
+    assert(block->tag == NODE_BLOCK);
+    AstBlock scope = block->block;
+
+    for (u64 i = 0; i < scope.statements.length; i++) {
+        AstNode *node = scope.statements.data[i];
+        if (node->tag != NODE_LET) continue;
+
+        char *node_name = node->let.name;
+
+        if (strcmp(name, node_name) == 0) {
+            return node;
+        }
+    }
+
+    if (!scope.parent) {
+        return find_decl_in_frame(root_scope, name);
+    }
+    
+    return find_decl(scope.parent, root_scope, name);
+}
+
 void free_interpreter(Interp *interp) {
     string_allocator_free(&interp->strings);
 
@@ -33,35 +70,44 @@ Object stack_top(Stack s) {
     return s.data[s.top];
 }
 
-void frame_push(Interp *s, Scope *frame) {
+void frame_push(Interp *s, StackFrame *frame) {
     s->call_stack.data[++s->call_stack.top] = frame;
     assert(s->call_stack.top <= CONTEXT_STACK_SIZE);
 }
 
-Scope *frame_pop(Interp *s) {
-    Scope *f = s->call_stack.data[s->call_stack.top];
+StackFrame *frame_pop(Interp *s) {
+    StackFrame *f = s->call_stack.data[s->call_stack.top];
     s->call_stack.data[s->call_stack.top--] = s->root_scope;
 }
 
-Scope *frame_top(Interp *s) {
+StackFrame *frame_top(Interp *s) {
     return s->call_stack.data[s->call_stack.top];
 }
 
-AstNode *find_decl(Scope *scope, char *name) {
-    if (!scope) return NULL;
 
-    for (u64 i = 0; i < scope->ast.length; i++) {
-        AstNode *node = scope->ast.data[i];
-        if (node->tag != NODE_LET) continue;
-        char *node_name = node->let.name;
-        if (strcmp(name, node_name) == 0) {
-            return node;
-        }
-    }
-
-    return find_decl(scope->parent, name);
+// Block stack
+void init_blocks(BlockStack *s) {
+    memset(s->blocks, 0, CONTEXT_STACK_SIZE*sizeof(AstNode*));
+    s->top = 0;
 }
 
+void push_block(BlockStack *s, AstNode *block) {
+    s->blocks[++s->top] = block;
+    assert(s->top <= CONTEXT_STACK_SIZE);
+}
+
+AstNode *pop_block(BlockStack *s) {
+    AstNode * b = s->blocks[s->top];
+    s->top--;
+    return b;
+}
+
+AstNode *current_block(BlockStack s) {
+    return s.blocks[s.top];
+}
+
+
+// Reads an entire file (`path`) into a null-terminated buffer.
 char *read_file(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) {
