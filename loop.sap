@@ -1,6 +1,8 @@
-let i   = 0
-let max = 10
 
+func useless_loop() {
+    let i   = 0
+    let max = 10
+    
 while i <= max {
     print(i)
 
@@ -13,3 +15,7 @@ while i <= max {
     i += 1
     x = 0
 }
+
+}
+
+useless_loop()

@@ -97,7 +97,7 @@ static AstNode *parse_statement(Parser *p) {
         out = parse_expression(p);
     }
 
-    if (!match(p, Token_SEMI_COLON)) {
+    if (!match_many(p, 2, Token_SEMI_COLON, Token_EOF)) {
         parser_error(p, "expected semi-colon");
         return NULL;
     }
