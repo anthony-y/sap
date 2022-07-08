@@ -3,9 +3,9 @@ if a {
     print(a)
 }
 
-func main(b, c) {
+func main(b) {
     if b {
-        print("WASSUP", c)
+        print("WASSUP")
         if b {
             print("fuck yea")
         }
@@ -16,8 +16,8 @@ func add(x, y) {
     return x + y
 }
 
-func f(b, c) {
-    main(b, add(12, 13))
+func f(b) {
+    main(b)
     return
 }
-f(true, -1)
+f(true)

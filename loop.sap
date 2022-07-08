@@ -3,19 +3,18 @@ func useless_loop() {
     let i   = 0
     let max = 10
     
-while i <= max {
-    print(i)
+    while i <= max {
+        print(i)
 
-    let x = 0
-    while x < 3 {
-        print(x)
-        x += 1
+        let x = 0
+        while x < 3 {
+            print(x)
+            x += 1
+        }
+
+        i += 1
+        x = 0
     }
-
-    i += 1
-    x = 0
-}
-
 }
 
 useless_loop()

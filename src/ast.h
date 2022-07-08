@@ -25,6 +25,7 @@ typedef enum NodeTag {
     NODE_BOOLEAN_LITERAL,
     NODE_SUBSCRIPT,
     NODE_EXPRESSION_LIST,
+    NODE_ARRAY_LITERAL,
     NODE_CALL,
     NODE_BINARY,
     NODE_UNARY,
@@ -134,7 +135,7 @@ typedef struct AstNode {
         AstIf         cf;
         AstLoop       loop;
         AstBreakCont  break_cont;
-        
+        struct AstNode *array_literal; // AstExpressionList
         char *        identifier;
     };
 } AstNode;

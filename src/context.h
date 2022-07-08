@@ -30,6 +30,7 @@ typedef enum ObjectTag {
     OBJECT_NULL,
     OBJECT_SCOPE,
     OBJECT_LAMBDA,
+    OBJECT_ARRAY,
 } ObjectTag;
 
 typedef struct ObjectString {
@@ -43,6 +44,7 @@ typedef struct Object {
         f64 floating;
         u8  boolean;
         ObjectString string;
+        Array(struct Object) array;
         StackFrame *scope;
         void *pointer;
     };
@@ -88,6 +90,7 @@ typedef enum Op {
     END_BLOCK,
 
     PRINT,
+    APPEND,
 
     EQUALS,
     LESS_THAN_EQUALS,
@@ -103,7 +106,7 @@ typedef enum Op {
     
     HALT,
 } Op;
-static const char *instruction_strings[27] = {
+static const char *instruction_strings[28] = {
     "CONST",
     "LOAD",
     "LOAD_PC",
@@ -120,6 +123,7 @@ static const char *instruction_strings[27] = {
     "BEGIN_BLOCK",
     "END_BLOCK",
     "PRINT",
+    "APPEND",
     "EQUALS",
     "LESS_THAN_EQUALS",
     "GREATER_THAN_EQUALS",

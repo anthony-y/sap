@@ -16,6 +16,7 @@ void compile_block(Interp *interp, AstNode *block);
 void compile_call(Interp *interp, AstNode *call);
 void compile_break_or_continue(Interp *interp, AstNode *bc);
 void instr(Interp *interp, Op op, s32 arg, u64 line_number);
+u64 compile_loads_for_expression_list(Interp *interp, AstNode *list, bool args);
 u64 add_scope_object(Interp *interp, StackFrame *scope);
 
 void add_primitive_objects(StackFrame *scope) {
@@ -121,6 +122,14 @@ u64 add_scope_object(Interp *interp, StackFrame *scope) {
     return interp->scope->constant_pool.length-1;
 }
 
+u64 add_array_object(Interp *interp) {
+    Object o = (Object){0};
+    o.tag = OBJECT_ARRAY;
+    array_init(o.array, Object);
+    array_add(interp->scope->constant_pool, o);
+    return interp->scope->constant_pool.length-1;
+}
+
 u64 reserve_constant(Interp *interp) {
     Object o = (Object){0};
     array_add(interp->scope->constant_pool, o);
@@ -153,6 +162,47 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
         return (expr->boolean.value ? TRUE_OBJECT_INDEX : FALSE_OBJECT_INDEX);
     } break;
 
+    case NODE_ARRAY_LITERAL: {
+        u64 array_index = add_array_object(interp);
+
+        if (!expr->array_literal) {
+            return array_index;
+        }
+        
+        Object *array = &interp->scope->constant_pool.data[array_index];
+
+        if (expr->array_literal->tag != NODE_EXPRESSION_LIST) {
+            u64 index = compile_expr(interp, expr->array_literal);
+            array_add(array->array, interp->scope->constant_pool.data[index]);
+            return array_index;
+        }
+
+        int length = expr->array_literal->expression_list.expressions.length;
+
+        for (int i = 0; i < length; i++) {
+            AstNode *node = expr->array_literal->expression_list.expressions.data[i];
+            u64 index = compile_expr(interp, node);
+            array_add(array->array, interp->scope->constant_pool.data[index]);
+        }
+        
+        return array_index;
+    } break;
+
+    case NODE_SUBSCRIPT: {
+        u64 target = compile_expr(interp, expr->subscript.array);
+        u64 index = compile_expr(interp, expr->subscript.inner_expr);
+        assert(false);
+    } break;
+
+    case NODE_IDENTIFIER: {
+        AstNode *maybe_decl = find_decl(current_block(block_stack), interp->root_scope, expr->identifier);
+        if (!maybe_decl) {
+            compile_error(interp, expr, "undeclared identifier '%s'", expr->identifier);
+            return 0;
+        }
+        return maybe_decl->let.constant_pool_index;
+    } break;
+
     case NODE_UNARY: {
         u64 result = reserve_constant(interp);
         switch (expr->unary.op) {
@@ -165,16 +215,7 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
         }
         return result;
     } break;
-
-    case NODE_IDENTIFIER: {
-        AstNode *maybe_decl = find_decl(current_block(block_stack), interp->root_scope, expr->identifier);
-        if (!maybe_decl) {
-            compile_error(interp, expr, "undeclared identifier '%s'", expr->identifier);
-            return 0;
-        }
-        return maybe_decl->let.constant_pool_index;
-    } break;
-
+    
     case NODE_BINARY: {
         u64 index = reserve_constant(interp);
         u64 leftidx = compile_expr(interp, expr->binary.left);
@@ -304,28 +345,31 @@ u64 compile_loads_for_expression_list(Interp *interp, AstNode *list, bool args) 
 }
 
 void compile_call(Interp *interp, AstNode *call) {
-    s32 num_args = 0;
-    if (call->call.args) {
-        // Multiple, comma-separated arguments.
-        if (call->call.args->tag == NODE_EXPRESSION_LIST) {
-            num_args = compile_loads_for_expression_list(interp, call->call.args, true);
-
-        } else { // Single argument
-            num_args = 1;
-            u64 value_index = compile_expr(interp, call->call.args);
-            instr(interp, LOAD_ARG, value_index, call->line);
-        }
-    }
-
     AstNode *name = call->call.name;
     if (name->tag == NODE_IDENTIFIER) {
         char *name_ident = name->identifier;
 
-        // Temporary hard-coded lookup.
+        // Temporary hard-coded built-ins lookup.
         if (strcmp(name_ident, "print") == 0) {
+            s32 num_args = compile_loads_for_expression_list(interp, call->call.args, true);
             instr(interp, PRINT, num_args, name->line);
             return;
         }
+
+        if (strcmp(name_ident, "append") == 0) {
+            Ast args = call->call.args->expression_list.expressions;
+            if (args.length != 2) {
+                compile_error(interp, call, "'append' takes 2 arguments");
+                return;
+            }
+            u64 value_loc = compile_expr(interp, args.data[1]);
+            u64 array_loc = compile_expr(interp, args.data[0]);
+            instr(interp, LOAD_ARG, value_loc, call->line);
+            instr(interp, APPEND, array_loc, call->line);
+            return;
+        }
+
+        s32 num_args = compile_loads_for_expression_list(interp, call->call.args, true);
 
         for (int i = 0; i < interp->root_scope->ast.length; i++) {
             AstNode *n = interp->root_scope->ast.data[i];
@@ -334,33 +378,16 @@ void compile_call(Interp *interp, AstNode *call) {
             AstLambda f = n->lambda;
 
             if (strcmp(name_ident, f.name) == 0) {
+                int expected_num_args = f.args->expression_list.expressions.length;
             
-                if (!f.args && num_args > 0) {
+                if (expected_num_args < num_args) {
                     compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
                     return;
                 }
 
-                if (f.args && f.args->tag == NODE_EXPRESSION_LIST) {
-                    if (f.args && f.args->expression_list.expressions.length < num_args) {
-                        compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
-                        return;
-                    }
-
-                    if (f.args && f.args->expression_list.expressions.length > num_args) {
-                        compile_error(interp, call, "too few arguments provided at call to '%s'", name_ident);
-                        return;
-                    }
-                }
-
-                else if (f.args && f.args->tag == NODE_IDENTIFIER) {
-                    if (num_args > 1) {
-                        compile_error(interp, call, "too many arguments provided at call to '%s'", name_ident);
-                        return;
-                    }
-                    if (num_args < 1) {
-                        compile_error(interp, call, "too few arguments provided at call to '%s'", name_ident);
-                        return;
-                    }
+                if (expected_num_args > num_args) {
+                    compile_error(interp, call, "too few arguments provided at call to '%s'", name_ident);
+                    return;
                 }
 
                 instr(interp, LOAD_PC, 0, call->line);
@@ -381,27 +408,20 @@ void compile_func(Interp *interp, AstNode *node) {
     AstLambda f = node->lambda;
     AstBlock  b = f.block->block;
 
-    Ast args;
-    if (f.args) {
-        args = f.args->expression_list.expressions;
-    }
+    Ast args = f.args->expression_list.expressions;
 
     u64 scope_index = push_frame(interp, b.statements);
 
-    if (f.args) {
-        // compile each as lets
-        for (int i = 0; i < args.length; i++) {
-            assert(args.data[i]->tag == NODE_LET);
-            args.data[i]->let.constant_pool_index = reserve_constant(interp);
-        }
+    // compile each as lets
+    for (int i = 0; i < args.length; i++) {
+        assert(args.data[i]->tag == NODE_LET);
+        args.data[i]->let.constant_pool_index = reserve_constant(interp);
     }
     
     instr(interp, LOAD_SCOPE, scope_index, node->line);
 
-    if (f.args) {
-        for (int i = 0; i < args.length; i++) {
-            instr(interp, STORE_ARG_OR_RETVAL, args.data[i]->let.constant_pool_index, node->line);
-        }
+    for (int i = 0; i < args.length; i++) {
+        instr(interp, STORE_ARG_OR_RETVAL, args.data[i]->let.constant_pool_index, node->line);
     }
 
     compile_block(interp, f.block);

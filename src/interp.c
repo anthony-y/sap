@@ -1,4 +1,6 @@
 #include "context.h"
+#include "array.h"
+
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
@@ -19,15 +21,15 @@ static void runtime_error(Interp *interp, Instruction instr, const char *fmt, ..
 
 static void runtime_print(Object value) {
     switch (value.tag) {
-    case OBJECT_BOOLEAN:   printf("%s", (value.boolean ? "true" : "false")); break;
-    case OBJECT_INTEGER:   printf("%ld", value.integer); break;
-    case OBJECT_FLOATING:  printf("%f", value.floating); break;
-    case OBJECT_STRING:    printf("%s", value.pointer); break;
-    case OBJECT_NULL:      printf("null"); break;
-    case OBJECT_UNDEFINED: printf("undefined"); break;
+    case OBJECT_BOOLEAN:   printf("%s\n", (value.boolean ? "true" : "false")); break;
+    case OBJECT_INTEGER:   printf("%ld\n", value.integer); break;
+    case OBJECT_FLOATING:  printf("%f\n", value.floating); break;
+    case OBJECT_STRING:    printf("%s\n", value.pointer); break;
+    case OBJECT_ARRAY:     for (int i = 0; i < value.array.length; i++) runtime_print(value.array.data[i]); break;
+    case OBJECT_NULL:      printf("null\n"); break;
+    case OBJECT_UNDEFINED: printf("undefined\n"); break;
     default: assert(false); break;
     }
-    printf("\n");
 }
 
 static u8 runtime_equals1(Object a, Object b) {
@@ -124,6 +126,18 @@ void run_interpreter(Interp *interp) {
             for (int i = 0; i < instr.arg; i++) {
                 runtime_print(stack_pop(&interp->call_storage));
             }
+        } break;
+
+        case APPEND: {
+            Object value  = stack_pop(&interp->call_storage);
+            Object *target = &scope->constant_pool.data[instr.arg];
+
+            if (target->tag != OBJECT_ARRAY) {
+                runtime_error(interp, instr, "attempt to append to non-array");
+                return;
+            }
+
+            array_add(target->array, value);
         } break;
 
         case BEGIN_BLOCK: {

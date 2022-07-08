@@ -167,13 +167,10 @@ static AstNode *parse_let(Parser *p) {
 }
 
 static bool ensure_arguments_are_correct(AstNode *args) {
-    if (args->tag == NODE_EXPRESSION_LIST) {
-        for (int i = 0; i < args->expression_list.expressions.length; i++) {
-            AstNode *expr = args->expression_list.expressions.data[i];
-            if (expr->tag != NODE_IDENTIFIER) return false;
-        }
-    } else if (args->tag != NODE_IDENTIFIER) {
-        return false;
+    assert(args->tag == NODE_EXPRESSION_LIST);
+    for (int i = 0; i < args->expression_list.expressions.length; i++) {
+        AstNode *expr = args->expression_list.expressions.data[i];
+        if (expr->tag != NODE_IDENTIFIER) return false;
     }
     return true;
 }
@@ -193,9 +190,21 @@ static AstNode *parse_lambda(Parser *p) {
         parser_error(p, "expected argument list");
         return NULL;
     }
-    AstNode *args = NULL;
 
-    if (!match(p, Token_CLOSE_PAREN)) {
+    AstNode *args = make_node(p, NODE_EXPRESSION_LIST);
+    array_init(args->expression_list.expressions, AstNode *);
+
+    if (p->token->type == Token_IDENT && peek(p).type == Token_CLOSE_PAREN) {
+        AstNode *single_arg = make_node(p, NODE_IDENTIFIER);
+        single_arg->identifier = p->token->text;
+
+        next(p);
+        assert(match(p, Token_CLOSE_PAREN));
+
+        array_add(args->expression_list.expressions, single_arg);
+    }
+    
+    else if (!match(p, Token_CLOSE_PAREN)) {
         AstNode *maybe_list = parse_expression_list(p);
         if (!maybe_list) {
             parser_error(p, "expected argument list");
@@ -210,8 +219,7 @@ static AstNode *parse_lambda(Parser *p) {
         if (ensure_arguments_are_correct(maybe_list)) {
             args = maybe_list;
         } else {
-            // TODO: better error
-            parser_error(p, "arguments must be declared as identififers");
+            parser_error(p, "arguments must be specified as a comma-separated list of identififers");
             return NULL;
         }
     }
@@ -226,25 +234,15 @@ static AstNode *parse_lambda(Parser *p) {
         return NULL;
     }
 
-    if (args) {
-        if (args->tag == NODE_EXPRESSION_LIST) {
-            for (int i = 0; i < args->expression_list.expressions.length; i++) {
-                AstNode *arg = args->expression_list.expressions.data[i];
-                arg->tag = NODE_LET;
-                arg->let.name = arg->identifier;
-                arg->let.expr = NULL;
-                arg->let.constant_pool_index = 0;
-                array_add(block->block.statements, arg);
-            }
-        }
-
-        else {
-            args->tag = NODE_LET;
-            args->let.name = args->identifier;
-            args->let.expr = NULL;
-            args->let.constant_pool_index = 0;
-            array_add(block->block.statements, args);
-        }
+    // TODO: this is still hack-y, let's make a lookup function for functions,
+    //       which takes the arguments list as well as the main block.
+    for (int i = 0; i < args->expression_list.expressions.length; i++) {
+        AstNode *arg = args->expression_list.expressions.data[i];
+        arg->tag = NODE_LET;
+        arg->let.name = arg->identifier;
+        arg->let.expr = NULL;
+        arg->let.constant_pool_index = 0;
+        array_add(block->block.statements, arg);
     }
 
     func->lambda.name = name;
@@ -504,18 +502,23 @@ static AstNode *parse_postfix(Parser *p) {
 static AstNode *parse_call(Parser *p, AstNode *left) {
     AstNode *call = make_node(p, NODE_CALL);
     call->call.name = left;
-    call->call.args = NULL;
+
+    AstNode *expr = parse_expression(p);
 
     if (!match(p, Token_CLOSE_PAREN)) {
-        AstNode *inner = parse_expression(p);
-        if (!inner) return NULL;
-        call->call.args = inner;
-        
-        if (!match(p, Token_CLOSE_PAREN)) {
-            parser_error(p, "expected closing )");
-        }
+        parser_error(p, "expected ')'");
+        return NULL;
     }
-    
+
+    if (expr->tag == NODE_EXPRESSION_LIST) {
+        call->call.args = expr;
+        return call;
+    }
+
+    AstNode *args = make_node(p, NODE_EXPRESSION_LIST);
+    array_init(args->expression_list.expressions, AstNode *);
+    array_add(args->expression_list.expressions, expr);
+    call->call.args = args;
     return call;
 }
 
@@ -566,10 +569,21 @@ static AstNode *parse_simple_expression(Parser *p) {
         return node;
     } break;
 
-    // TODO: test array stuff again, this might need to be moved to parse_statement
     case Token_OPEN_BRACKET: {
         next(p);
-        return NULL;
+        AstNode *node = make_node(p, NODE_ARRAY_LITERAL);
+        node->array_literal = NULL;
+        if (match(p, Token_CLOSE_BRACKET)) {
+            return node;
+        }
+        AstNode *exprs = parse_expression_list(p);
+        if (!exprs) return NULL;
+        node->array_literal = exprs;
+        if (!match(p, Token_CLOSE_BRACKET)) {
+            parser_error(p, "expected ']'");
+            return NULL;
+        }
+        return node;
     } break;
 
     case Token_MINUS: {
