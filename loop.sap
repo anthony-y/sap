@@ -1,16 +1,15 @@
 let i   = 0
 let max = 10
 
-
 while i <= max {
     print(i)
 
     let x = 0
     while x < 3 {
         print(x)
-        x = x+1
+        x += 1
     }
 
-    i = i+1
+    i += 1
     x = 0
 }

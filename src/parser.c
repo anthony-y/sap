@@ -351,7 +351,7 @@ static AstNode *parse_expression_list(Parser *p) {
 
 static AstNode *parse_assignment(Parser *p) {
     AstNode *or = parse_logical_or(p);
-    while (match(p, Token_EQUAL)) {
+    while (match_many(p, 5, Token_EQUAL, Token_PLUS_EQUAL, Token_MINUS_EQUAL, Token_SLASH_EQUAL, Token_STAR_EQUAL)) {
         TokenType op = p->before->type;
         AstNode *right = parse_logical_or(p);
         if (!right) {

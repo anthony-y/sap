@@ -27,7 +27,11 @@ static void test_stack() {
 int main(int arg_count, char *args[]) {
     test_stack();
 
-    if (arg_count < 2) return -1;
+    if (arg_count < 2) {
+        printf("Please supply the path of the main module.\n");
+        return -1;
+    }
+
     char *file_data = read_file(args[1]);
 
     bool verbose = false;

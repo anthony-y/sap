@@ -11,7 +11,7 @@ func fib(n, i) {
 }
 
 let i = 0
-while i <= 15 {
+while i <= 3 {
     print(fib(i, i))
     i = i+1
 }

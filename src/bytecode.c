@@ -216,12 +216,6 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
         return index;
     } break;
 
-    case NODE_LAMBDA: {
-        u64 index = reserve_constant(interp);
-        compile_block(interp, expr->lambda.block);
-        return index;
-    } break;
-
     case NODE_CALL: {
         u64 index = reserve_constant(interp);
         compile_call(interp, expr);
@@ -259,7 +253,40 @@ void compile_assignment(Interp *interp, AstNode *node) {
     u64 target_index = compile_expr(interp, ass.left);
     u64 value_index  = compile_expr(interp, ass.right);
 
-    instr(interp, LOAD, value_index, node->line);
+    switch (ass.op) {
+    case Token_EQUAL: {
+        instr(interp, LOAD, value_index, node->line);
+    } break;
+
+    case Token_PLUS_EQUAL: {
+        instr(interp, LOAD, target_index, node->line);
+        instr(interp, LOAD, value_index, node->line);
+        instr(interp, ADD, 0, node->line);
+    } break;
+
+    case Token_MINUS_EQUAL: {
+        instr(interp, LOAD, target_index, node->line);
+        instr(interp, LOAD, value_index, node->line);
+        instr(interp, SUB, 0, node->line);
+    } break;
+
+    case Token_STAR_EQUAL: {
+        instr(interp, LOAD, target_index, node->line);
+        instr(interp, LOAD, value_index, node->line);
+        instr(interp, MUL, 0, node->line);
+    } break;
+
+    case Token_SLASH_EQUAL: {
+        instr(interp, LOAD, target_index, node->line);
+        instr(interp, LOAD, value_index, node->line);
+        instr(interp, DIV, 0, node->line);
+    } break;
+
+    default: {
+        assert(false);
+    } break;
+    }
+
     instr(interp, STORE, target_index, node->line);
 }
 
@@ -478,7 +505,7 @@ void compile_statement(Interp *interp, AstNode *stmt) {
     } break;
 
     case NODE_BINARY: {
-        if (stmt->binary.op == Token_EQUAL) {
+        if (stmt->binary.op > Token_ASSIGNMENTS_START && stmt->binary.op < Token_ASSIGNMENTS_END) {
             compile_assignment(interp, stmt);
         }
     } break;
