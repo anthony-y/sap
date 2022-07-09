@@ -21,13 +21,24 @@ static void runtime_error(Interp *interp, Instruction instr, const char *fmt, ..
 
 static void runtime_print(Object value) {
     switch (value.tag) {
-    case OBJECT_BOOLEAN:   printf("%s\n", (value.boolean ? "true" : "false")); break;
-    case OBJECT_INTEGER:   printf("%ld\n", value.integer); break;
-    case OBJECT_FLOATING:  printf("%f\n", value.floating); break;
-    case OBJECT_STRING:    printf("%s\n", value.pointer); break;
-    case OBJECT_ARRAY:     for (int i = 0; i < value.array.length; i++) runtime_print(value.array.data[i]); break;
-    case OBJECT_NULL:      printf("null\n"); break;
-    case OBJECT_UNDEFINED: printf("undefined\n"); break;
+    case OBJECT_BOOLEAN:   printf("%s", (value.boolean ? "true" : "false")); break;
+    case OBJECT_INTEGER:   printf("%ld", value.integer); break;
+    case OBJECT_FLOATING:  printf("%f", value.floating); break;
+    case OBJECT_STRING:    printf("%s", value.pointer); break;
+    case OBJECT_NULL:      printf("null"); break;
+    case OBJECT_UNDEFINED: printf("undefined"); break;
+
+    case OBJECT_ARRAY: {
+        printf("[%d]{", value.array.length);
+        for (int i = 0; i < value.array.length; i++) {
+            runtime_print(value.array.data[i]);
+            if (i < value.array.length-1) {
+                printf(", ");
+            }
+        }
+        printf("}");
+    } break;
+
     default: assert(false); break;
     }
 }
@@ -104,10 +115,10 @@ void run_interpreter(Interp *interp) {
             Object arg = stack_pop(&interp->call_storage);
             scope->constant_pool.data[instr.arg] = arg;
         } break;
-        
-        case STORE: { // TODO type checking
-            Object new_value = stack_pop(&scope->stack);
-            scope->constant_pool.data[instr.arg] = new_value;
+
+        case STORE: {
+            Object arg = stack_pop(&scope->stack);
+            scope->constant_pool.data[instr.arg] = arg;
         } break;
 
         case EQUALS: {
@@ -125,19 +136,21 @@ void run_interpreter(Interp *interp) {
         case PRINT: {
             for (int i = 0; i < instr.arg; i++) {
                 runtime_print(stack_pop(&interp->call_storage));
+                printf("\n");
             }
         } break;
 
         case APPEND: {
             Object value  = stack_pop(&interp->call_storage);
-            Object *target = &scope->constant_pool.data[instr.arg];
+            Object target = scope->constant_pool.data[instr.arg];
 
-            if (target->tag != OBJECT_ARRAY) {
+            if (target.tag != OBJECT_ARRAY) {
                 runtime_error(interp, instr, "attempt to append to non-array");
                 return;
             }
 
-            array_add(target->array, value);
+            array_add(target.array, value);
+            stack_push(&interp->call_storage, target);
         } break;
 
         case BEGIN_BLOCK: {

@@ -48,6 +48,7 @@ typedef struct Object {
         StackFrame *scope;
         void *pointer;
     };
+    bool non_mutable;
     ObjectTag tag;
 } Object;
 

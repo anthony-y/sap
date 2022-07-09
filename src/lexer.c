@@ -157,6 +157,7 @@ static Token tokenize_ident_or_keyword(Lexer *tz) {
     if (strncmp(tz->start, "func", 4)   == 0) return token_new(tz, Token_FUNC);
     if (strncmp(tz->start, "else", 4)   == 0) return token_new(tz, Token_ELSE);
     if (strncmp(tz->start, "while", 5)  == 0) return token_new(tz, Token_WHILE);
+    if (strncmp(tz->start, "const", 5)  == 0) return token_new(tz, Token_CONST);
     if (strncmp(tz->start, "break", 5)  == 0) return token_new(tz, Token_BREAK);
     if (strncmp(tz->start, "continue", 8) == 0) return token_new(tz, Token_CONTINUE);
     if (strncmp(tz->start, "null", 4)  == 0)  return token_new(tz, Token_NULL);

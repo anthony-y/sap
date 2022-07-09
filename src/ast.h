@@ -31,10 +31,14 @@ typedef enum NodeTag {
     NODE_UNARY,
 } NodeTag;
 
+enum {
+    DECL_NON_MUTABLE = 1 << 0,
+};
 typedef struct AstLet {
     char *name;
     struct AstNode *expr;
     u64 constant_pool_index;
+    int flags;
 } AstLet;
 
 typedef struct AstIf {
@@ -135,7 +139,7 @@ typedef struct AstNode {
         AstIf         cf;
         AstLoop       loop;
         AstBreakCont  break_cont;
-        struct AstNode *array_literal; // AstExpressionList
+        struct AstNode *array_literal;
         char *        identifier;
     };
 } AstNode;

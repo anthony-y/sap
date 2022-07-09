@@ -136,6 +136,13 @@ u64 reserve_constant(Interp *interp) {
     return interp->scope->constant_pool.length-1;
 }
 
+u64 reserve_non_mutable(Interp *interp) {
+    Object o = (Object){0};
+    o.non_mutable = true;
+    array_add(interp->scope->constant_pool, o);
+    return interp->scope->constant_pool.length-1;
+}
+
 u64 compile_expr(Interp *interp, AstNode *expr) {
     switch (expr->tag) {
     case NODE_ENCLOSED_EXPRESSION: {
@@ -271,11 +278,18 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
 }
 
 void compile_let(Interp *interp, AstNode *node) {
-    // For now at least, a variable is just a named reference to a slot in the constants table.
-    u64 variable_index = reserve_constant(interp);
-    node->let.constant_pool_index = variable_index; // for name lookup
-
     AstLet let = node->let;
+
+    // For now at least, a variable is just a named reference to a slot in the constants table.
+    u64 variable_index;
+
+    if (let.flags & DECL_NON_MUTABLE) {
+        variable_index = reserve_non_mutable(interp);
+    } else {
+        variable_index = reserve_constant(interp);
+    }
+    
+    node->let.constant_pool_index = variable_index; // for name lookup
 
     // Store null by default, then compile the expression if there is one.
     // Basically, this code implements null-initialization-by-default.
@@ -292,6 +306,11 @@ void compile_assignment(Interp *interp, AstNode *node) {
     AstBinary ass = node->binary;
 
     u64 target_index = compile_expr(interp, ass.left);
+    if (interp->scope->constant_pool.data[target_index].non_mutable) {
+        compile_error(interp, node, "attempt to change value of const symbol");
+        return;
+    }
+
     u64 value_index  = compile_expr(interp, ass.right);
 
     switch (ass.op) {

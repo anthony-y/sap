@@ -17,7 +17,7 @@ static AstNode *make_node(Parser *p, NodeTag tag);
 
 static AstNode *parse_statement(Parser *p);
 static AstNode *parse_lambda(Parser *p);
-static AstNode *parse_let(Parser *p);
+static AstNode *parse_let(Parser *p, bool is_const);
 static AstNode *parse_return(Parser *p);
 static AstNode *parse_if(Parser *p);
 static AstNode *parse_break_continue(Parser *p);
@@ -74,7 +74,10 @@ static AstNode *parse_statement(Parser *p) {
         out = parse_block(p);
 
     } else if (match(p, Token_LET)) {
-        out = parse_let(p);
+        out = parse_let(p, false);
+
+    } else if (match(p, Token_CONST)) {
+        out = parse_let(p, true);
 
     } else if (match(p, Token_FUNC)) {
         out = parse_lambda(p);
@@ -134,7 +137,7 @@ static AstNode *parse_block(Parser *p) {
     return node;
 }
 
-static AstNode *parse_let(Parser *p) {
+static AstNode *parse_let(Parser *p, bool is_const) {
     if (p->token->type != Token_IDENT) {
         parser_error(p, "expected name on variable declaration");
         return NULL;
@@ -143,6 +146,9 @@ static AstNode *parse_let(Parser *p) {
     AstNode *node = make_node(p, NODE_LET);
     node->let.name = p->token->text;
     node->let.expr = NULL;
+    node->let.flags = 0;
+
+    if (is_const) node->let.flags |= DECL_NON_MUTABLE;
 
     next(p); // skip identifier
 
@@ -503,6 +509,13 @@ static AstNode *parse_call(Parser *p, AstNode *left) {
     AstNode *call = make_node(p, NODE_CALL);
     call->call.name = left;
 
+    AstNode *args = make_node(p, NODE_EXPRESSION_LIST);
+
+    if (match(p, Token_CLOSE_PAREN)) {
+        call->call.args = args;
+        return call;
+    }
+
     AstNode *expr = parse_expression(p);
 
     if (!match(p, Token_CLOSE_PAREN)) {
@@ -515,7 +528,6 @@ static AstNode *parse_call(Parser *p, AstNode *left) {
         return call;
     }
 
-    AstNode *args = make_node(p, NODE_EXPRESSION_LIST);
     array_init(args->expression_list.expressions, AstNode *);
     array_add(args->expression_list.expressions, expr);
     call->call.args = args;
