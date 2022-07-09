@@ -29,14 +29,14 @@ static void runtime_print(Object value) {
     case OBJECT_UNDEFINED: printf("undefined"); break;
 
     case OBJECT_ARRAY: {
-        printf("[%d]{", value.array.length);
+        printf("[");
         for (int i = 0; i < value.array.length; i++) {
             runtime_print(value.array.data[i]);
             if (i < value.array.length-1) {
                 printf(", ");
             }
         }
-        printf("}");
+        printf("]");
     } break;
 
     default: assert(false); break;
@@ -79,6 +79,16 @@ static char *runtime_string_concat(Interp *interp, Object a, Object b) {
 
     result[new_length] = 0;
     return result;
+}
+
+static s64 runtime_len(Object o) {
+    if (o.tag == OBJECT_ARRAY) {
+        return o.array.length;
+    }
+    if (o.tag == OBJECT_STRING) {
+        return strlen(o.pointer);
+    }
+    return -1;
 }
 
 void run_interpreter(Interp *interp) {
@@ -136,8 +146,9 @@ void run_interpreter(Interp *interp) {
         case PRINT: {
             for (int i = 0; i < instr.arg; i++) {
                 runtime_print(stack_pop(&interp->call_storage));
-                printf("\n");
+                printf(" ");
             }
+            printf("\n");
         } break;
 
         case APPEND: {
@@ -151,6 +162,25 @@ void run_interpreter(Interp *interp) {
 
             array_add(target.array, value);
             stack_push(&interp->call_storage, target);
+        } break;
+
+        case LEN: {
+            Object value = scope->constant_pool.data[instr.arg];
+            Object result = (Object){0};
+            s64 len = runtime_len(value);
+            if (len == -1) {
+                runtime_error(interp, instr, "argument of 'len' must be array or string");
+                return;
+            }
+            result.integer = len;
+            result.tag = OBJECT_INTEGER;
+            stack_push(&interp->call_storage, result);
+        } break;
+
+        case ARRAY_SUBSCRIPT: {
+            Object index = stack_pop(&scope->stack);
+            Object array = scope->constant_pool.data[instr.arg];
+            scope->constant_pool.data[ARRAY_SUBSCRIPT_RESULT_INDEX] = array.array.data[index.integer];
         } break;
 
         case BEGIN_BLOCK: {

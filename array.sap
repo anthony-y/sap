@@ -1,3 +1,9 @@
-const array = [2]
-array = append(array, 1)
+let array = [1, 2, 3]
+
+let i = len(array)+1
+while i <= 5 {
+	array = append(array, i)
+	i += 1
+}
+
 print(array)

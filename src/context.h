@@ -13,6 +13,7 @@
 #define NULL_OBJECT_INDEX 1
 #define TRUE_OBJECT_INDEX 2
 #define FALSE_OBJECT_INDEX 3
+#define ARRAY_SUBSCRIPT_RESULT_INDEX 4
 
 #define PRINT_INSTRUCTIONS_DURING_COMPILE 0
 
@@ -92,6 +93,7 @@ typedef enum Op {
 
     PRINT,
     APPEND,
+    LEN,
 
     EQUALS,
     LESS_THAN_EQUALS,
@@ -104,10 +106,12 @@ typedef enum Op {
     MUL,
     DIV,
     NEG,
+
+    ARRAY_SUBSCRIPT,
     
     HALT,
 } Op;
-static const char *instruction_strings[28] = {
+static const char *instruction_strings[30] = {
     "CONST",
     "LOAD",
     "LOAD_PC",
@@ -125,6 +129,7 @@ static const char *instruction_strings[28] = {
     "END_BLOCK",
     "PRINT",
     "APPEND",
+    "LEN",
     "EQUALS",
     "LESS_THAN_EQUALS",
     "GREATER_THAN_EQUALS",
@@ -135,6 +140,7 @@ static const char *instruction_strings[28] = {
     "MUL",
     "DIV",
     "NEG",
+    "ARRAY_SUBSCRIPT",
     "HALT",
 };
 

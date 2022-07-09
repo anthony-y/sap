@@ -145,23 +145,45 @@ static Token tokenize_ident_or_keyword(Lexer *tz) {
         next_character(tz);
     }
 
-    if (strncmp(tz->start, "let", 3)    == 0) return token_new(tz, Token_LET);
-    if (strncmp(tz->start, "if", 2)     == 0) return token_new(tz, Token_IF);
-    if (strncmp(tz->start, "import", 6) == 0) return token_new(tz, Token_IMPORT);
-    if (strncmp(tz->start, "false", 5)  == 0) return token_new(tz, Token_FALSE);
-    if (strncmp(tz->start, "for", 3)    == 0) return token_new(tz, Token_FOR);
-    if (strncmp(tz->start, "struct", 6) == 0) return token_new(tz, Token_STRUCT);
-    if (strncmp(tz->start, "true", 4)   == 0) return token_new(tz, Token_TRUE);
-    if (strncmp(tz->start, "then", 4)   == 0) return token_new(tz, Token_THEN);
-    if (strncmp(tz->start, "return", 6) == 0) return token_new(tz, Token_RETURN);
-    if (strncmp(tz->start, "func", 4)   == 0) return token_new(tz, Token_FUNC);
-    if (strncmp(tz->start, "else", 4)   == 0) return token_new(tz, Token_ELSE);
-    if (strncmp(tz->start, "while", 5)  == 0) return token_new(tz, Token_WHILE);
-    if (strncmp(tz->start, "const", 5)  == 0) return token_new(tz, Token_CONST);
-    if (strncmp(tz->start, "break", 5)  == 0) return token_new(tz, Token_BREAK);
-    if (strncmp(tz->start, "continue", 8) == 0) return token_new(tz, Token_CONTINUE);
-    if (strncmp(tz->start, "null", 4)  == 0)  return token_new(tz, Token_NULL);
-    if (strncmp(tz->start, "func", 4)  == 0)  return token_new(tz, Token_FUNC);
+    int len = (tz->curr - tz->start);
+
+    if (len == 4) {
+        if (strncmp(tz->start, "true", 4) == 0) return token_new(tz, Token_TRUE);
+        if (strncmp(tz->start, "then", 4) == 0) return token_new(tz, Token_THEN);
+        if (strncmp(tz->start, "else", 4) == 0) return token_new(tz, Token_ELSE);
+        if (strncmp(tz->start, "func", 4) == 0) return token_new(tz, Token_FUNC);
+        if (strncmp(tz->start, "null", 4) == 0) return token_new(tz, Token_NULL);
+        if (strncmp(tz->start, "func", 4) == 0) return token_new(tz, Token_FUNC);
+
+        return token_new(tz, Token_IDENT);
+    }
+
+    if (len == 5) {
+        if (strncmp(tz->start, "false", 5)  == 0) return token_new(tz, Token_FALSE);
+        if (strncmp(tz->start, "while", 5)  == 0) return token_new(tz, Token_WHILE);
+        if (strncmp(tz->start, "const", 5)  == 0) return token_new(tz, Token_CONST);
+        if (strncmp(tz->start, "break", 5)  == 0) return token_new(tz, Token_BREAK);
+
+        return token_new(tz, Token_IDENT);
+    }
+
+    if (len == 6) {
+        if (strncmp(tz->start, "struct", 6) == 0) return token_new(tz, Token_STRUCT);
+        if (strncmp(tz->start, "return", 6) == 0) return token_new(tz, Token_RETURN);
+        if (strncmp(tz->start, "import", 6) == 0) return token_new(tz, Token_IMPORT);
+
+        return token_new(tz, Token_IDENT);
+    }
+
+    if (len == 3) {
+        if (strncmp(tz->start, "let", 3)    == 0) return token_new(tz, Token_LET);
+        if (strncmp(tz->start, "for", 3)    == 0) return token_new(tz, Token_FOR);
+
+        return token_new(tz, Token_IDENT);
+    }
+
+    if (len == 8 && strncmp(tz->start, "continue", 8) == 0) return token_new(tz, Token_CONTINUE);
+    if (len == 2 && strncmp(tz->start, "if", 2)     == 0) return token_new(tz, Token_IF);
 
     return token_new(tz, Token_IDENT);
 }
@@ -246,7 +268,7 @@ Token next_token(Lexer *tz) {
         case '*': return token_new(tz, next_if_match(tz, '=') ? Token_STAR_EQUAL    : Token_STAR);
         case '/': return token_new(tz, next_if_match(tz, '=') ? Token_SLASH_EQUAL   : Token_SLASH);
         case '!': return token_new(tz, next_if_match(tz, '=') ? Token_BANG_EQUAL    : Token_BANG);
-        case '=': return token_new(tz, next_if_match(tz, '=') ? Token_EQUAL_EQUAL   : Token_EQUAL);
+        case '=': return token_new(tz, next_if_match(tz, '=') ? Token_EQUAL_EQUAL   : next_if_match(tz, '>') ? Token_BIG_ARROW : Token_EQUAL);
         case '+': return token_new(tz, next_if_match(tz, '=') ? Token_PLUS_EQUAL    : Token_PLUS);
         case '>': return token_new(tz, next_if_match(tz, '=') ? Token_GREATER_EQUAL : Token_GREATER);
         case '<': return token_new(tz, next_if_match(tz, '=') ? Token_LESS_EQUAL    : Token_LESS);

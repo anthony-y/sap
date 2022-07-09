@@ -65,6 +65,7 @@ typedef enum TokenType {
     Token_CARAT,
     Token_HASH,
     Token_ARROW,
+    Token_BIG_ARROW,
     Token_PERCENT,
 
     Token_BINOP_START,

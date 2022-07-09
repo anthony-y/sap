@@ -35,6 +35,10 @@ void add_primitive_objects(StackFrame *scope) {
     Object false_object = (Object){.tag=OBJECT_BOOLEAN, .boolean = 0};
     array_add(scope->constant_pool, false_object);
     assert(scope->constant_pool.length-1 == FALSE_OBJECT_INDEX);
+
+    Object array_subscipt_result_object = (Object){0};
+    array_add(scope->constant_pool, array_subscipt_result_object);
+    assert(scope->constant_pool.length-1 == ARRAY_SUBSCRIPT_RESULT_INDEX);
 }
 
 u64 push_frame(Interp *interp, Ast ast) {
@@ -196,9 +200,11 @@ u64 compile_expr(Interp *interp, AstNode *expr) {
     } break;
 
     case NODE_SUBSCRIPT: {
-        u64 target = compile_expr(interp, expr->subscript.array);
-        u64 index = compile_expr(interp, expr->subscript.inner_expr);
-        assert(false);
+        u64 target_index = compile_expr(interp, expr->subscript.array);
+        u64 index_index = compile_expr(interp, expr->subscript.inner_expr);
+        instr(interp, LOAD, index_index, expr->line);
+        instr(interp, ARRAY_SUBSCRIPT, target_index, expr->line);
+        return ARRAY_SUBSCRIPT_RESULT_INDEX;
     } break;
 
     case NODE_IDENTIFIER: {
@@ -385,6 +391,17 @@ void compile_call(Interp *interp, AstNode *call) {
             u64 array_loc = compile_expr(interp, args.data[0]);
             instr(interp, LOAD_ARG, value_loc, call->line);
             instr(interp, APPEND, array_loc, call->line);
+            return;
+        }
+
+        if (strcmp(name_ident, "len") == 0) {
+            Ast args = call->call.args->expression_list.expressions;
+            if (args.length != 1) {
+                compile_error(interp, call, "'len' takes 1 argument");
+                return;
+            }
+            u64 value_loc = compile_expr(interp, args.data[0]);
+            instr(interp, LEN, value_loc, call->line);
             return;
         }
 

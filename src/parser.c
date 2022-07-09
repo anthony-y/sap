@@ -184,6 +184,8 @@ static bool ensure_arguments_are_correct(AstNode *args) {
 static AstNode *parse_lambda(Parser *p) {
     AstNode *func = make_node(p, NODE_LAMBDA);
 
+    match(p, Token_FUNC);
+
     if (p->token->type != Token_IDENT) {
         parser_error(p, "expected name of function");
         return NULL;
@@ -230,14 +232,39 @@ static AstNode *parse_lambda(Parser *p) {
         }
     }
 
-    if (!match(p, Token_OPEN_BRACE)) {
-        parser_error(p, "expected block");
-        return NULL;
-    }
+    AstNode *block = NULL;
 
-    AstNode *block = parse_block(p);
-    if (!block) {
-        return NULL;
+    if (match(p, Token_BIG_ARROW)) {
+        block = make_node(p, NODE_BLOCK);
+
+        Ast ast;
+        array_init(ast, AstNode*);
+
+        block->block.parent = current_block(block_stack);
+        push_block(&block_stack, block);
+
+        AstNode *single = parse_statement(p);
+        if (!single) {
+            return NULL;
+        }
+
+        array_add(ast, single);
+        pop_block(&block_stack);
+
+        block->block.statements = ast;
+        block->block.final_statement = single;
+    }
+    
+    else {
+        if (!match(p, Token_OPEN_BRACE)) {
+            parser_error(p, "expected block");
+            return NULL;
+        }
+
+        block = parse_block(p);
+        if (!block) {
+            return NULL;
+        }
     }
 
     // TODO: this is still hack-y, let's make a lookup function for functions,
